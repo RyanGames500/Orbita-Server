@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ORBITA - Motor Multijugador para GameMaker</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --surface: #131822;
+      --surface-2: #1a2130;
+      --border: #263044;
+      --text: #e6edf7;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Barra superior */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .brand { font-weight: 700; font-size: 1.15rem; display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .nav-links { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+    /* Vistas */
+    .view { display: none; flex-direction: column; min-height: calc(100vh - 58px); }
+    .view.active { display: flex; }
+
+    /* Portada publica */
+    .hero {
+      text-align: center;
+      padding: 3.75rem 1.5rem 2.75rem;
+      border-bottom: 1px solid var(--border);
+      background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.12), transparent 65%);
+    }
+    .hero h1 { font-size: clamp(1.9rem, 4vw, 2.8rem); font-weight: 800; line-height: 1.2; margin-bottom: 0.85rem; }
+    .hero p { color: var(--muted); font-size: 1.05rem; max-width: 660px; margin: 0 auto 1.75rem; }
+    .hero-actions { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.25rem;
+    }
+
+    a.btn { text-decoration: none; display: inline-block; text-align: center; }
+
+    /* Documentacion */
+    .docs-layout {
+      display: grid;
+      grid-template-columns: 245px 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 820px) { .docs-layout { grid-template-columns: 1fr; } }
+
+    .docs-sidebar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      position: sticky;
+      top: 74px;
+    }
+    .doc-cat-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 0.25rem;
+    }
+    .doc-cat-btn:hover { background: var(--surface-2); color: var(--text); }
+    .doc-cat-btn.active { background: rgba(59,130,246,0.18); color: var(--accent); }
+
+    .fn-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .fn-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .fn-sig { font-family: var(--mono); font-size: 0.96rem; font-weight: 700; color: #60a5fa; }
+    .fn-meta {
+      margin-top: 0.65rem;
+      padding: 0.7rem 0.85rem;
+      background: var(--surface-2);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .fn-list {
+      margin-top: 0.65rem;
+      padding-left: 1.15rem;
+      font-size: 0.86rem;
+      color: var(--muted);
+      display: grid;
+      gap: 0.3rem;
+    }
+    .fn-list strong { color: var(--text); }
+    .code-block {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.95rem 1rem;
+      margin-top: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.83rem;
+      color: #cbd5e1;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Modales */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .login-card h1 { font-size: 1.4rem; margin-bottom: 0.35rem; }
+    .login-card p { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .auth-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+
+    /* Navegacion admin */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      padding: 0.85rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    main {
+      flex: 1;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Tarjetas y stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+    }
+    .stat-label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem; font-family: var(--mono); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .badge.ok { border-color: rgba(16,185,129,0.4); color: var(--success); background: rgba(16,185,129,0.1); }
+    .badge.warn { border-color: rgba(245,158,11,0.4); color: var(--warning); background: rgba(245,158,11,0.1); }
+    .badge.danger { border-color: rgba(239,68,68,0.4); color: var(--danger); background: rgba(239,68,68,0.1); }
+
+    /* Inputs y botones */
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      width: 100%;
+    }
+    textarea { font-family: var(--mono); font-size: 0.85rem; min-height: 140px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #232c40; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-sm { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    .row > .btn, .row > .auto { flex: 0 0 auto; width: auto; }
+
+    /* Tablas */
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+    tr:last-child td { border-bottom: none; }
+    code { font-family: var(--mono); background: var(--bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82rem; }
+
+    /* Editor DB y World */
+    .editor-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 820px) { .editor-grid { grid-template-columns: 1fr; } }
+
+    .list-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 460px;
+      overflow-y: auto;
+    }
+    .list-item {
+      padding: 0.6rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+    }
+    .list-item:hover { background: var(--surface-2); }
+    .list-item.selected { background: rgba(59,130,246,0.18); border-left: 3px solid var(--accent); }
+
+    /* Notificacion */
+    #toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 0.75rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR MINIMALISTA -->
+  <header class="topbar">
+    <div class="brand" onclick="switchView('home')">
+      <span class="dot"></span>
+      <span>ORBITA</span>
+    </div>
+    <div class="nav-links">
+      <button class="btn btn-secondary btn-sm" onclick="switchView('home')">Inicio</button>
+      <button class="btn btn-secondary btn-sm" onclick="switchView('docs', 'rapido')">Documentacion</button>
+      <button class="btn btn-secondary btn-sm" onclick="switchView('home', 'planes')">Planes</button>
+      <button id="nav-dashboard-btn" class="btn btn-sm" onclick="openDashboard()">Dashboard</button>
+    </div>
+  </header>
+
+  <!-- VISTA 1: PORTADA PUBLICA -->
+  <div id="view-home" class="view active">
+    <section class="hero">
+      <h1>Motor multijugador en tiempo real para <span style="color:var(--accent);">GameMaker</span></h1>
+      <p>Crea juegos multijugador con poco codigo e implementacion rapida. Registra tu cuenta para obtener tu clave de servidor y reemplazala en el proyecto base proporcionado.</p>
+      <div class="hero-actions">
+        <button class="btn" onclick="openDashboard()">Ir al Dashboard</button>
+        <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-secondary">Descargar Proyecto GameMaker (.zip)</a>
+      </div>
+    </section>
+
+    <main>
+      <div class="grid-3">
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Sistema basado en salas</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Comparte movimiento sprites y eventos entre jugadores en tiempo real con pocas lineas de GML.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Clave de servidor por proyecto</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Crea una cuenta y genera claves de servidor gratuitas desde tu Dashboard para cada uno de tus juegos.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Persistencia y Matchmaking</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Emparejamiento rapido y base de datos integrada en el servidor sin configuraciones externas.</p>
+        </div>
+      </div>
+
+      <!-- PLANES -->
+      <div id="planes" style="margin-top:2.5rem;">
+        <h2 style="font-size:1.45rem; text-align:center; margin-bottom:0.35rem;">Planes</h2>
+        <p style="color:var(--muted); text-align:center; margin-bottom:1.25rem; font-size:0.92rem;">Empieza gratis y amplia la capacidad de tu clave de servidor cuando tu juego crezca.</p>
+        <div class="grid-3" style="max-width:820px; margin:0 auto;">
+          <div class="card">
+            <span class="badge ok" style="margin-bottom:0.65rem;">PLAN INDIE</span>
+            <h3 style="font-size:1.35rem;">Gratis</h3>
+            <p style="color:var(--muted); font-size:0.88rem; margin:0.5rem 0 1rem;">Disponible al crear tu cuenta en el Dashboard.</p>
+            <ul style="list-style:none; font-size:0.88rem; display:grid; gap:0.45rem;">
+              <li>- Proyecto plantilla GameMaker</li>
+              <li>- Claves de servidor ilimitadas</li>
+              <li>- Hasta 20 jugadores simultaneos por clave</li>
+              <li>- Salas Matchmaking y Base de Datos</li>
+            </ul>
+            <button class="btn btn-secondary" style="width:100%; margin-top:1.1rem;" onclick="openDashboard()">Entrar al Dashboard</button>
+          </div>
+          <div class="card" style="border-color:var(--accent);">
+            <span class="badge" style="border-color:var(--accent); color:var(--accent); margin-bottom:0.65rem;">PLAN PRO</span>
+            <h3 style="font-size:1.35rem;">Escalable</h3>
+            <p style="color:var(--muted); font-size:0.88rem; margin:0.5rem 0 1rem;">Amplia el limite de jugadores simultaneos de tu clave.</p>
+            <ul style="list-style:none; font-size:0.88rem; display:grid; gap:0.45rem;">
+              <li>- Mas de 20 jugadores simultaneos</li>
+              <li>- Modulos propios en servidor</li>
+              <li>- Colecciones privadas anti-trampas</li>
+              <li>- Soporte directo</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISTA 2: DASHBOARD DEL DESARROLLADOR (CLAVE DE SERVIDOR) -->
+  <div id="view-dev" class="view">
+    <main>
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <h1 style="font-size:1.45rem;">Dashboard</h1>
+          <p id="dev-user-subtitle" style="color:var(--muted); font-size:0.88rem;">Administra tus claves de servidor para GameMaker.</p>
+        </div>
+        <div class="row auto">
+          <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-secondary btn-sm">Descargar Proyecto GameMaker (.zip)</a>
+          <button class="btn btn-danger btn-sm" onclick="logoutDev()">Cerrar Sesion</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <strong>Generar Clave de Servidor</strong>
+            <p style="color:var(--muted); font-size:0.82rem; margin-top:0.15rem;">Asigna una clave de servidor a cada juego y reemplazala en <code>ORB_GAME_KEY</code> dentro de <code>orb_config.gml</code>.</p>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label style="font-size:0.8rem; color:var(--muted);">Nombre del Juego</label>
+            <input type="text" id="dev-project-input" placeholder="Ej. Tank Multiplayer" />
+          </div>
+          <button class="btn" style="align-self:flex-end;" onclick="createDevKey()">Generar Clave de Servidor</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <strong>Claves de Servidor</strong>
+          <button class="btn btn-secondary btn-sm" onclick="loadDevKeys()">Actualizar</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Juego</th>
+                <th>Clave de Servidor</th>
+                <th>Plan</th>
+                <th>Jugadores Conectados</th>
+                <th style="text-align:right;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="dev-keys-tbody">
+              <tr><td colspan="5" style="color:var(--muted); text-align:center;">Cargando claves de servidor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISTA 3: DOCUMENTACION SDK (INCLUYE GUIA 5 MINUTOS) -->
+  <div id="view-docs" class="view">
+    <main>
+      <div style="margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <h1 style="font-size:1.65rem; margin-bottom:0.25rem;">Documentacion de Orbita (GML)</h1>
+          <p style="color:var(--muted); font-size:0.92rem;">Guia rapida de configuracion y referencia completa de funciones para GameMaker.</p>
+        </div>
+        <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-sm">Descargar Proyecto GameMaker (.zip)</a>
+      </div>
+
+      <div class="docs-layout">
+        <aside class="docs-sidebar">
+          <div style="margin-bottom:0.75rem;">
+            <input type="text" id="doc-search" placeholder="Buscar funcion o tema..." oninput="renderDocs()" />
+          </div>
+          <button class="doc-cat-btn active" data-cat="rapido" onclick="filterDocCat('rapido', this)">1. Primer juego (5 min)</button>
+          <button class="doc-cat-btn" data-cat="conexion" onclick="filterDocCat('conexion', this)">2. Conexion y Red</button>
+          <button class="doc-cat-btn" data-cat="salas" onclick="filterDocCat('salas', this)">3. Salas y Lobbies</button>
+          <button class="doc-cat-btn" data-cat="jugadores" onclick="filterDocCat('jugadores', this)">4. Jugadores y Eventos</button>
+          <button class="doc-cat-btn" data-cat="datos" onclick="filterDocCat('datos', this)">5. Datos y Mundo</button>
+          <button class="doc-cat-btn" data-cat="servidor" onclick="filterDocCat('servidor', this)">6. Servidor y Errores</button>
+          <button class="doc-cat-btn" data-cat="all" onclick="filterDocCat('all', this)">Ver Todo</button>
+        </aside>
+
+        <div id="docs-content"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISTA 4: DASHBOARD ADMINISTRADOR GLOBAL -->
+  <div id="view-admin" class="view">
+    <nav>
+      <button class="tab-btn active" data-tab="live">Salas en Vivo</button>
+      <button class="tab-btn" data-tab="keys">Claves de Servidor (Global)</button>
+      <button class="tab-btn" data-tab="db">Base de Datos (db.json)</button>
+      <button class="tab-btn" data-tab="world">Mundo Persistente (world.json)</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem; padding:0.4rem 0;">
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.84rem; color:var(--muted); cursor:pointer;">
+          <input type="checkbox" id="auto-refresh" checked style="width:auto;" />
+          Auto-actualizar (3s)
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="refreshAll()">Actualizar</button>
+        <button class="btn btn-danger btn-sm" onclick="logout()">Salir</button>
+      </div>
+    </nav>
+
+    <main>
+      <section id="tab-live" class="section active">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Jugadores Conectados</div>
+            <div class="stat-value" id="stat-players">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Salas Activas</div>
+            <div class="stat-value" id="stat-rooms">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Desarrolladores</div>
+            <div class="stat-value" id="stat-devs">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Uptime Servidor</div>
+            <div class="stat-value" id="stat-uptime">0s</div>
+          </div>
+        </div>
+
+        <div id="live-games-container"></div>
+      </section>
+
+      <section id="tab-keys" class="section">
+        <div class="card">
+          <div class="card-header">
+            <strong>Todas las Claves de Servidor Registradas</strong>
+            <button class="btn btn-secondary btn-sm" onclick="loadAdminKeys()">Refrescar</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Desarrollador</th>
+                  <th>Juego</th>
+                  <th>Clave de Servidor</th>
+                  <th>Plan</th>
+                  <th>Conectados / Limite</th>
+                  <th>Estado</th>
+                  <th style="text-align:right;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="admin-keys-tbody">
+                <tr><td colspan="7" style="color:var(--muted); text-align:center;">Cargando claves...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-db" class="section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Juego (ORB_GAME_ID)</label>
+              <div class="row">
+                <select id="db-game-select" onchange="loadDbCollections()"></select>
+                <button class="btn btn-danger" onclick="deleteEntireGame()">Eliminar Juego</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">O escribir nuevo Game ID</label>
+              <div class="row">
+                <input type="text" id="db-new-game" placeholder="Ej. MutagenFighters" />
+                <button class="btn btn-secondary" onclick="selectCustomDbGame()">Abrir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Colecciones y Claves</strong>
+              <button class="btn btn-sm" onclick="prepareNewDbRecord()">+ Nuevo</button>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+              <select id="db-col-select" onchange="loadDbKeys()"></select>
+            </div>
+            <div class="list-box" id="db-keys-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="db-editor-title">Editor de Documento</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveDbRecord()">Guardar JSON</button>
+                <button class="btn btn-danger btn-sm" id="db-delete-btn" onclick="deleteDbRecord()" style="display:none;">Eliminar</button>
+              </div>
+            </div>
+            <div class="row" style="margin-bottom:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Coleccion</label>
+                <input type="text" id="db-edit-col" placeholder="ej. _perfiles" />
+              </div>
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Clave (Key)</label>
+                <input type="text" id="db-edit-key" placeholder="ej. jugador_1" />
+              </div>
+            </div>
+            <label style="font-size:0.8rem; color:var(--muted);">Valor (JSON valido)</label>
+            <textarea id="db-edit-val" placeholder='{"monedas": 100, "nivel": 1}'></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-world" class="section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Juego (ORB_GAME_ID)</label>
+              <select id="world-game-select" onchange="loadWorldRooms()"></select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Sala Persistente</label>
+              <select id="world-room-select" onchange="loadWorldObjects()"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Objetos en Sala</strong>
+            </div>
+            <div class="list-box" id="world-objs-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="world-editor-title">Propiedades del Objeto</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveWorldObject()">Actualizar en Vivo</button>
+                <button class="btn btn-danger btn-sm" id="world-delete-btn" onclick="deleteWorldObject()" style="display:none;">Destruir</button>
+              </div>
+            </div>
+            <input type="hidden" id="world-edit-id" />
+            <label style="font-size:0.8rem; color:var(--muted);">Propiedades JSON</label>
+            <textarea id="world-edit-val" placeholder='{"x": 200, "y": 350, "tipo": "cofre"}'></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL DASHBOARD (CUENTA DESARROLLADOR + ACCESO ADMIN DISCRETO) -->
+  <div id="dev-modal" class="modal-backdrop">
+    <div class="login-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <h1>Dashboard</h1>
+        <button class="btn btn-secondary btn-sm" onclick="closeDevModal()">X</button>
+      </div>
+      <p>Crea una cuenta o inicia sesion para obtener tu clave de servidor.</p>
+
+      <div class="auth-tabs">
+        <button type="button" id="tab-auth-register" class="btn btn-sm" onclick="switchAuthMode('register')">Crear Cuenta</button>
+        <button type="button" id="tab-auth-login" class="btn btn-secondary btn-sm" onclick="switchAuthMode('login')">Iniciar Sesion</button>
+      </div>
+
+      <form id="dev-auth-form">
+        <div id="dev-name-group" style="margin-bottom:0.75rem;">
+          <input type="text" id="dev-name-input" placeholder="Nombre o estudio" required />
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <input type="email" id="dev-email-input" placeholder="Correo electronico" required />
+        </div>
+        <div style="margin-bottom:1rem;">
+          <input type="password" id="dev-pass-input" placeholder="Contraseña (minimo 6 caracteres)" required />
+        </div>
+        <button type="submit" id="dev-auth-submit" class="btn" style="width:100%;">Crear Cuenta y Entrar</button>
+      </form>
+      <p id="dev-auth-error" style="color: var(--danger); margin-top: 0.75rem; margin-bottom: 0; display: none;"></p>
+
+      <div style="margin-top:1.25rem; padding-top:0.85rem; border-top:1px solid var(--border); text-align:right;">
+        <button type="button" style="background:none; border:none; color:var(--muted); font-size:0.78rem; cursor:pointer;" onclick="openAdminFromDev()">Acceso Administrador</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL LOGIN ADMIN -->
+  <div id="login-modal" class="modal-backdrop">
+    <div class="login-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <h1>Administrador</h1>
+        <button class="btn btn-secondary btn-sm" onclick="closeLoginModal()">X</button>
+      </div>
+      <p>Ingresa tu <code>ADMIN_TOKEN</code> para administrar el servidor.</p>
+      <form id="login-form">
+        <div style="margin-bottom: 1rem;">
+          <input type="password" id="token-input" placeholder="Token de administrador" required />
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Entrar</button>
+      </form>
+      <p id="login-error" style="color: var(--danger); margin-top: 0.75rem; margin-bottom: 0; display: none;"></p>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const DOCS_DATA = [
+      {
+        cat: "rapido",
+        sig: "Paso 1: Abrir Proyecto GameMaker y pegar tu Clave de Servidor",
+        badge: "Primer juego",
+        desc: "Descarga el proyecto base abrelo en GameMaker Studio 2 y reemplaza ORB_GAME_KEY en orb_config.gml por la clave de servidor asignada en tu Dashboard.",
+        bullets: [
+          "<strong>ORB_HOST:</strong> IP o dominio del servidor (127.0.0.1 en local).",
+          "<strong>ORB_PORT:</strong> Puerto del servidor (3000 en local o 443 con SSL).",
+          "<strong>ORB_GAME_ID:</strong> Identificador interno de tu juego.",
+          "<strong>ORB_GAME_KEY:</strong> Tu clave de servidor generada en el Dashboard.",
+          "<strong>ORB_PLAYER_OBJECT:</strong> Objeto que representara a los demas jugadores."
+        ],
+        code: `// En orb_config.gml
+#macro ORB_HOST          "127.0.0.1"
+#macro ORB_PORT          3000
+#macro ORB_SECURE        false
+#macro ORB_GAME_ID       "MiPrimerJuego"
+#macro ORB_GAME_KEY      "pega_aqui_tu_clave_de_servidor"
+#macro ORB_PLAYER_OBJECT obj_otro_jugador`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 2: Objeto Controlador (obj_control)",
+        badge: "Primer juego",
+        desc: "Conecta con el servidor al iniciar la room y entra a una sala al recibir confirmacion.",
+        meta: "Eventos necesarios: Create y Draw GUI.",
+        code: `// --- EVENTO CREATE de obj_control ---
+orb_connect();
+
+orb_on(ORB_EV_CONNECTED, function(_data, _from) {
+    orb_join_room("sala_principal", 10, function(_ok, _res) {
+        if (_ok) {
+            instance_create_layer(200, 200, "Instances", obj_jugador);
+        }
+    });
+});
+
+// --- EVENTO DRAW GUI de obj_control ---
+orb_debug_draw(16, 16);`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 3: Tu Jugador Local (obj_jugador)",
+        badge: "Primer juego",
+        desc: "Programa tu personaje normalmente y asigna global.orb_state = orb_state_from(id) al final del Step.",
+        code: `// --- EVENTO CREATE de obj_jugador ---
+velocidad = 4;
+hp = 100;
+
+// --- EVENTO STEP de obj_jugador ---
+var _h = keyboard_check(vk_right) - keyboard_check(vk_left);
+var _v = keyboard_check(vk_down) - keyboard_check(vk_up);
+
+x += _h * velocidad;
+y += _v * velocidad;
+
+global.orb_state = orb_state_from(id);
+global.orb_state.hp = hp;`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 4: Los Otros Jugadores (obj_otro_jugador)",
+        badge: "Primer juego",
+        desc: "Orbita crea mueve y destruye obj_otro_jugador automaticamente cuando entran o salen jugadores de la sala.",
+        code: `// --- EVENTO CREATE de obj_otro_jugador ---
+hp = 100;
+
+// --- EVENTO DRAW de obj_otro_jugador ---
+draw_self();
+draw_set_halign(fa_center);
+draw_text(x, y - 40, "Jugador #" + string(orb_player_id) + " (" + string(hp) + " HP)");`
+      },
+      {
+        cat: "conexion",
+        sig: "orb_connect() / orb_disconnect()",
+        badge: "Conexion",
+        desc: "Abre o cierra la conexion WebSocket con el servidor.",
+        code: `orb_connect();
+
+orb_on(ORB_EV_CONNECTED, function(_data, _from) {
+    show_debug_message("Conectado! Mi ID es: " + string(_data.my_id));
+});`
+      },
+      {
+        cat: "conexion",
+        sig: "orb_is_connected() / orb_id() / orb_ping() / orb_debug_draw()",
+        badge: "Diagnostico",
+        desc: "Consulta el estado de conexion y la latencia en milisegundos.",
+        code: `orb_debug_draw(16, 16);`
+      },
+      {
+        cat: "salas",
+        sig: "orb_join_room(_nombre, _max, _callback) / orb_leave_room()",
+        badge: "Salas",
+        desc: "Crea o entra a una sala por nombre. El primer jugador se convierte en el Host.",
+        code: `orb_join_room("torneo_1", 2, function(_ok, _res) {
+    if (_ok) show_debug_message("Entre a la sala! Host? " + string(orb_is_host()));
+});`
+      },
+      {
+        cat: "salas",
+        sig: "orb_matchmake(_cantidad, _modo, _callback) / orb_cancel_matchmake()",
+        badge: "Matchmaking",
+        desc: "Empareja jugadores automaticamente cuando se junta la cantidad indicada.",
+        code: `orb_matchmake(2, "ranked");`
+      },
+      {
+        cat: "salas",
+        sig: "orb_list_rooms(_cb) / orb_room() / orb_slot() / orb_is_host() / orb_player_count()",
+        badge: "Lobby y Host",
+        desc: "Consulta salas disponibles y tu puesto o rol de Host.",
+        code: `orb_list_rooms(function(_ok, _salas) {
+    if (_ok) show_debug_message("Salas activas: " + string(array_length(_salas)));
+});`
+      },
+      {
+        cat: "jugadores",
+        sig: "global.orb_state = orb_state_from(id)",
+        badge: "Sincronizacion",
+        desc: "Envia posicion sprite escala y rotacion solo cuando cambian.",
+        code: `global.orb_state = orb_state_from(id);`
+      },
+      {
+        cat: "jugadores",
+        sig: "orb_send_room(_evento, _datos) / orb_on(_evento, _fn) / orb_off(_evento)",
+        badge: "Eventos",
+        desc: "Envia golpes disparos o mensajes instantaneos a todos en la sala.",
+        code: `orb_send_room("hit", { victima: otro.orb_player_id, dano: 20 });`
+      },
+      {
+        cat: "datos",
+        sig: "orb_db_set / orb_db_get / orb_db_merge / orb_db_delete / orb_db_list",
+        badge: "Base de Datos",
+        desc: "Guarda perfiles monedas o inventarios persistentes en el servidor.",
+        code: `orb_db_set("perfiles", "ryan", { monedas: 100, nivel: 1 });`
+      },
+      {
+        cat: "datos",
+        sig: "orb_world_create / orb_world_edit / orb_world_delete",
+        badge: "Mundo Persistente",
+        desc: "Crea objetos persistentes en una sala que sobreviven aunque todos se desconecten.",
+        code: `orb_world_create({ x: 350, y: 280, tipo: "cofre" });`
+      },
+      {
+        cat: "servidor",
+        sig: "Errores Comunes (bad_key / plan_limit / not_connected)",
+        badge: "Soporte",
+        desc: "Si recibes plan_limit alcanzaste los 20 jugadores simultaneos del plan gratuito en esa clave de servidor.",
+        code: `orb_on(ORB_EV_ERROR, function(_err) {
+    show_debug_message("Error Orbita: " + string(_err.code));
+});`
+      }
+    ];
+
+    let activeDocCat = "rapido";
+    function filterDocCat(cat, btn) {
+      activeDocCat = cat;
+      document.querySelectorAll(".doc-cat-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      renderDocs();
+    }
+
+    function renderDocs() {
+      const q = (document.getElementById("doc-search").value || "").toLowerCase();
+      const filtered = DOCS_DATA.filter(item => {
+        const matchCat = q ? true : (activeDocCat === "all" || item.cat === activeDocCat);
+        const matchBullets = item.bullets && item.bullets.some(b => b.toLowerCase().includes(q));
+        const matchText = !q || item.sig.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q) || item.code.toLowerCase().includes(q) || matchBullets;
+        return matchCat && matchText;
+      });
+
+      const container = document.getElementById("docs-content");
+      if (!filtered.length) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">No se encontraron resultados.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map((item, idx) => `
+        <div class="fn-card">
+          <div class="fn-header">
+            <span class="fn-sig">${escapeHtml(item.sig)}</span>
+            <span class="badge">${escapeHtml(item.badge)}</span>
+          </div>
+          <p style="color:var(--muted); font-size:0.9rem;">${escapeHtml(item.desc)}</p>
+          ${item.bullets ? `<ul class="fn-list">${item.bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+          ${item.meta ? `<div class="fn-meta">${escapeHtml(item.meta)}</div>` : ""}
+          <div class="code-block"><button class="copy-btn" onclick="copyCode(${idx})">Copiar</button><span id="code-snippet-${idx}">${escapeHtml(item.code)}</span></div>
+        </div>
+      `).join("");
+    }
+
+    function copyCode(idx) {
+      const txt = document.getElementById("code-snippet-" + idx).textContent;
+      navigator.clipboard.writeText(txt).then(() => toast("Codigo copiado"));
+    }
+
+    // Tokens de sesion
+    let ADMIN_TOKEN = localStorage.getItem("orbita_admin_token") || "";
+    let DEV_TOKEN = localStorage.getItem("orbita_dev_token") || "";
+    let authMode = "register";
+    let currentDbData = {};
+    let currentWorldData = {};
+
+    function switchView(viewName, subTarget) {
+      document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+      document.getElementById("view-" + viewName).classList.add("active");
+
+      if (viewName === "docs") {
+        if (subTarget) {
+          const btn = document.querySelector(`.doc-cat-btn[data-cat="${subTarget}"]`);
+          filterDocCat(subTarget, btn);
+        } else {
+          renderDocs();
+        }
+      }
+      if (viewName === "home" && subTarget) {
+        const el = document.getElementById(subTarget);
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // DASHBOARD UNIFICADO (DESARROLLADOR O ADMIN)
+    // ------------------------------------------------------------------
+    function openDashboard() {
+      if (ADMIN_TOKEN) {
+        loadOverview().then(() => switchView("admin")).catch(() => {
+          ADMIN_TOKEN = "";
+          localStorage.removeItem("orbita_admin_token");
+          document.getElementById("dev-modal").classList.add("open");
+        });
+        return;
+      }
+      if (DEV_TOKEN) {
+        loadDevKeys().then(() => switchView("dev")).catch(() => {
+          DEV_TOKEN = "";
+          localStorage.removeItem("orbita_dev_token");
+          document.getElementById("dev-modal").classList.add("open");
+        });
+        return;
+      }
+      document.getElementById("dev-modal").classList.add("open");
+    }
+
+    function openAdminFromDev() {
+      closeDevModal();
+      document.getElementById("login-modal").classList.add("open");
+    }
+
+    function closeDevModal() {
+      document.getElementById("dev-modal").classList.remove("open");
+    }
+
+    function switchAuthMode(mode) {
+      authMode = mode;
+      const isReg = mode === "register";
+      document.getElementById("dev-name-group").style.display = isReg ? "block" : "none";
+      document.getElementById("dev-name-input").required = isReg;
+      document.getElementById("dev-auth-submit").textContent = isReg ? "Crear Cuenta y Entrar" : "Iniciar Sesion";
+      document.getElementById("tab-auth-register").className = isReg ? "btn btn-sm" : "btn btn-secondary btn-sm";
+      document.getElementById("tab-auth-login").className = !isReg ? "btn btn-sm" : "btn btn-secondary btn-sm";
+      document.getElementById("dev-auth-error").style.display = "none";
+    }
+
+    document.getElementById("dev-auth-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("dev-name-input").value.trim();
+      const email = document.getElementById("dev-email-input").value.trim();
+      const password = document.getElementById("dev-pass-input").value;
+      const errEl = document.getElementById("dev-auth-error");
+      errEl.style.display = "none";
+
+      try {
+        const endpoint = authMode === "register" ? "/api/dev/register" : "/api/dev/login";
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Error de autenticacion");
+
+        DEV_TOKEN = data.token;
+        localStorage.setItem("orbita_dev_token", DEV_TOKEN);
+        closeDevModal();
+        await loadDevKeys();
+        switchView("dev");
+        toast(`Bienvenido ${data.user.name}`);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    function logoutDev() {
+      DEV_TOKEN = "";
+      localStorage.removeItem("orbita_dev_token");
+      switchView("home");
+    }
+
+    async function devApi(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + DEV_TOKEN,
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Error HTTP " + res.status);
+      return data;
+    }
+
+    async function loadDevKeys() {
+      const data = await devApi("/api/dev/keys");
+      document.getElementById("dev-user-subtitle").textContent = `${data.user.name} (${data.user.email})`;
+      const tbody = document.getElementById("dev-keys-tbody");
+      const list = data.keys || [];
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted); text-align:center; padding:1.5rem;">Aun no tienes claves de servidor. Genera una arriba para tu proyecto.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = list.map(k => `
+        <tr>
+          <td><strong>${escapeHtml(k.projectName)}</strong></td>
+          <td>
+            <code>${escapeHtml(k.uuid)}</code>
+            <button class="btn btn-secondary btn-sm" style="margin-left:0.4rem;" onclick="copyText('${escapeHtml(k.uuid)}')">Copiar</button>
+          </td>
+          <td>${k.plan === "pro" ? '<span class="badge ok">PRO</span>' : '<span class="badge">GRATIS</span>'}</td>
+          <td><code>${k.onlineNow} / ${k.maxPlayers}</code></td>
+          <td style="text-align:right;">
+            <button class="btn btn-danger btn-sm" onclick="deleteDevKey('${escapeHtml(k.uuid)}', '${escapeHtml(k.projectName)}')">Eliminar</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function createDevKey() {
+      const projectName = document.getElementById("dev-project-input").value.trim() || "Mi Juego";
+      try {
+        const res = await devApi("/api/dev/keys", {
+          method: "POST",
+          body: JSON.stringify({ projectName })
+        });
+        document.getElementById("dev-project-input").value = "";
+        copyText(res.uuid);
+        toast(`Clave de servidor creada para "${projectName}"`);
+        loadDevKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDevKey(uuid, name) {
+      if (!confirm(`Eliminar la clave de servidor de "${name}"?`)) return;
+      try {
+        await devApi(`/api/dev/keys/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+        toast("Clave de servidor eliminada");
+        loadDevKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt).then(() => toast("Clave de servidor copiada"));
+    }
+
+    // ------------------------------------------------------------------
+    // DASHBOARD ADMINISTRADOR GLOBAL
+    // ------------------------------------------------------------------
+    function closeLoginModal() {
+      document.getElementById("login-modal").classList.remove("open");
+    }
+
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "keys") loadAdminKeys();
+        if (btn.dataset.tab === "db") loadDbCollections();
+        if (btn.dataset.tab === "world") loadWorldRooms();
+      });
+    });
+
+    function toast(msg, isError = false) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.style.borderColor = isError ? "var(--danger)" : "var(--success)";
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 3000);
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + ADMIN_TOKEN,
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Error HTTP " + res.status);
+      return data;
+    }
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      ADMIN_TOKEN = document.getElementById("token-input").value.trim();
+      const errEl = document.getElementById("login-error");
+      errEl.style.display = "none";
+      try {
+        await loadOverview();
+        localStorage.setItem("orbita_admin_token", ADMIN_TOKEN);
+        closeLoginModal();
+        switchView("admin");
+      } catch (err) {
+        errEl.textContent = "Token invalido o servidor inaccesible.";
+        errEl.style.display = "block";
+      }
+    });
+
+    function logout() {
+      localStorage.removeItem("orbita_admin_token");
+      ADMIN_TOKEN = "";
+      switchView("home");
+    }
+
+    function formatUptime(sec) {
+      if (sec < 60) return sec + "s";
+      if (sec < 3600) return Math.floor(sec / 60) + "m " + (sec % 60) + "s";
+      return Math.floor(sec / 3600) + "h " + Math.floor((sec % 3600) / 60) + "m";
+    }
+
+    async function loadOverview() {
+      const data = await api("/api/admin/overview");
+      document.getElementById("stat-players").textContent = data.totalConnections;
+      document.getElementById("stat-uptime").textContent = formatUptime(data.uptimeSec);
+      document.getElementById("stat-devs").textContent = data.totalDevelopers || 0;
+
+      const gameIds = Object.keys(data.games);
+      let totalRooms = 0;
+      gameIds.forEach(g => totalRooms += data.games[g].rooms.length);
+      document.getElementById("stat-rooms").textContent = totalRooms;
+
+      renderLiveGames(data.games);
+      syncGameSelectors(data);
+    }
+
+    function renderLiveGames(gamesObj) {
+      const container = document.getElementById("live-games-container");
+      const entries = Object.entries(gamesObj);
+      if (entries.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted); padding:2.5rem;">No hay jugadores conectados en este momento.</div>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(([gid, info]) => {
+        const modBadge = info.hasModule
+          ? `<span class="badge ok">Modulo games/${gid.toLowerCase()}.js activo</span>`
+          : `<span class="badge">Modo Estandar (Relay)</span>`;
+
+        const roomsHtml = info.rooms.length === 0
+          ? `<p style="color:var(--muted); font-size:0.88rem;">Jugadores en lobby (sin sala asignada).</p>`
+          : info.rooms.map(r => `
+              <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.9rem; margin-bottom:0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+                  <div>
+                    <strong>Sala:</strong> <code>${escapeHtml(r.id)}</code>
+                    <span class="badge" style="margin-left:0.4rem;">${r.players.length}${r.max ? "/" + r.max : ""} jugadores</span>
+                  </div>
+                  <span style="font-size:0.8rem; color:var(--muted);">Host ID: <code>${r.host}</code></span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Puesto</th>
+                      <th>Server Data (pdata)</th>
+                      <th>Estado (state)</th>
+                      <th style="text-align:right;">Accion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${r.players.map(p => `
+                      <tr>
+                        <td><code>#${p.id}</code> ${p.id === r.host ? '<span class="badge warn">HOST</span>' : ''}</td>
+                        <td>Slot ${p.slot}</td>
+                        <td><code>${escapeHtml(JSON.stringify(p.pdata || {}))}</code></td>
+                        <td><code>${escapeHtml(JSON.stringify(p.state || {}))}</code></td>
+                        <td style="text-align:right;">
+                          <button class="btn btn-danger btn-sm" onclick="kickPlayer(${p.id})">Kick</button>
+                        </td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            `).join("");
+
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div style="display:flex; align-items:center; gap:0.6rem;">
+                <h3 style="font-size:1.1rem;">${escapeHtml(gid)}</h3>
+                ${modBadge}
+              </div>
+              <span class="badge">${info.rooms.length} salas</span>
+            </div>
+            ${roomsHtml}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function kickPlayer(playerId) {
+      if (!confirm(`Expulsar al jugador #${playerId}?`)) return;
+      try {
+        await api("/api/admin/kick", { method: "POST", body: JSON.stringify({ playerId }) });
+        toast(`Jugador #${playerId} expulsado`);
+        loadOverview();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function loadAdminKeys() {
+      const tbody = document.getElementById("admin-keys-tbody");
+      try {
+        const res = await api("/api/admin/keys");
+        const list = res.keys || [];
+        if (!list.length) {
+          tbody.innerHTML = `<tr><td colspan="7" style="color:var(--muted); text-align:center; padding:1.5rem;">Aun no hay claves de servidor registradas.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = list.map(k => `
+          <tr>
+            <td><strong>${escapeHtml(k.owner)}</strong></td>
+            <td>${escapeHtml(k.projectName)}</td>
+            <td><code>${escapeHtml(k.uuid)}</code></td>
+            <td>${k.plan === "pro" ? '<span class="badge ok">PRO</span>' : '<span class="badge">GRATIS</span>'}</td>
+            <td><code>${k.onlineNow} / ${k.maxPlayers}</code></td>
+            <td>${k.active ? '<span class="badge ok">Activa</span>' : '<span class="badge danger">Pausada</span>'}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              ${k.plan === "free"
+                ? `<button class="btn btn-sm" onclick="upgradeApiKey('${escapeHtml(k.uuid)}', 'pro', 100)">Subir a Pro (100)</button>`
+                : `<button class="btn btn-secondary btn-sm" onclick="upgradeApiKey('${escapeHtml(k.uuid)}', 'free', 20)">Pasar a Gratis (20)</button>`}
+              <button class="btn btn-secondary btn-sm" onclick="toggleApiKey('${escapeHtml(k.uuid)}', ${!k.active})">${k.active ? "Pausar" : "Activar"}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteAdminKey('${escapeHtml(k.uuid)}')">Borrar</button>
+            </td>
+          </tr>
+        `).join("");
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger); text-align:center;">Error: ${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    async function upgradeApiKey(uuid, plan, maxPlayers) {
+      try {
+        await api(`/api/admin/keys/${encodeURIComponent(uuid)}`, {
+          method: "PUT",
+          body: JSON.stringify({ plan, maxPlayers })
+        });
+        toast(`Plan actualizado a ${plan.toUpperCase()} (${maxPlayers} jugadores)`);
+        loadAdminKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function toggleApiKey(uuid, active) {
+      try {
+        await api(`/api/admin/keys/${encodeURIComponent(uuid)}`, {
+          method: "PUT",
+          body: JSON.stringify({ active })
+        });
+        toast(active ? "Clave activada" : "Clave pausada");
+        loadAdminKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteAdminKey(uuid) {
+      if (!confirm("Eliminar permanentemente esta clave de servidor?")) return;
+      try {
+        await api(`/api/admin/keys/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+        toast("Clave eliminada");
+        loadAdminKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function syncGameSelectors(data) {
+      const dbSel = document.getElementById("db-game-select");
+      const wSel = document.getElementById("world-game-select");
+      const curDb = dbSel.value;
+      const curW = wSel.value;
+
+      const allGames = Array.from(new Set([...Object.keys(data.games), ...data.knownDbGames, ...data.knownWorldGames, "Ahspai"]));
+      const opts = allGames.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
+
+      if (dbSel.innerHTML !== opts) {
+        dbSel.innerHTML = opts;
+        if (curDb && allGames.includes(curDb)) dbSel.value = curDb;
+      }
+      if (wSel.innerHTML !== opts) {
+        wSel.innerHTML = opts;
+        if (curW && allGames.includes(curW)) wSel.value = curW;
+      }
+    }
+
+    // CRUD BASE DE DATOS (db.json)
+    function selectCustomDbGame() {
+      const g = document.getElementById("db-new-game").value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!g) return;
+      const sel = document.getElementById("db-game-select");
+      if (![...sel.options].some(o => o.value === g)) sel.add(new Option(g, g));
+      sel.value = g;
+      document.getElementById("db-new-game").value = "";
+      loadDbCollections();
+    }
+
+    async function deleteEntireGame() {
+      const gameId = document.getElementById("db-game-select").value;
+      if (!gameId) return;
+      if (!confirm(`Eliminar por completo el juego "${gameId}"?`)) return;
+      try {
+        await api(`/api/admin/game/${encodeURIComponent(gameId)}`, { method: "DELETE" });
+        toast(`Juego "${gameId}" eliminado`);
+        await loadOverview();
+        loadDbCollections();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function loadDbCollections() {
+      const gameId = document.getElementById("db-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await api(`/api/admin/db/${encodeURIComponent(gameId)}`);
+        currentDbData = res.data || {};
+        const cols = Object.keys(currentDbData);
+        const colSel = document.getElementById("db-col-select");
+        const prev = colSel.value;
+        colSel.innerHTML = cols.length
+          ? cols.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${Object.keys(currentDbData[c]).length})</option>`).join("")
+          : `<option value="">(Sin colecciones aun)</option>`;
+        if (prev && cols.includes(prev)) colSel.value = prev;
+        loadDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadDbKeys() {
+      const col = document.getElementById("db-col-select").value;
+      const list = document.getElementById("db-keys-list");
+      if (!col || !currentDbData[col]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">Selecciona o crea una coleccion.</div>`;
+        return;
+      }
+      const keys = Object.keys(currentDbData[col]);
+      list.innerHTML = keys.map(k => `
+        <div class="list-item" onclick="editDbKey('${escapeHtml(col)}', '${escapeHtml(k)}')">
+          <span>${escapeHtml(k)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editDbKey(col, key) {
+      document.getElementById("db-editor-title").textContent = `Editando: ${col} / ${key}`;
+      document.getElementById("db-edit-col").value = col;
+      document.getElementById("db-edit-key").value = key;
+      document.getElementById("db-edit-val").value = JSON.stringify(currentDbData[col][key], null, 2);
+      document.getElementById("db-delete-btn").style.display = "inline-block";
+    }
+
+    function prepareNewDbRecord() {
+      document.getElementById("db-editor-title").textContent = "Nuevo Registro Persistente";
+      document.getElementById("db-edit-col").value = document.getElementById("db-col-select").value || "";
+      document.getElementById("db-edit-key").value = "";
+      document.getElementById("db-edit-val").value = "{\n  \n}";
+      document.getElementById("db-delete-btn").style.display = "none";
+    }
+
+    async function saveDbRecord() {
+      const gameId = document.getElementById("db-game-select").value;
+      const col = document.getElementById("db-edit-col").value.trim();
+      const key = document.getElementById("db-edit-key").value.trim();
+      if (!gameId || !col || !key) return toast("Completa Juego Coleccion y Clave", true);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(document.getElementById("db-edit-val").value);
+      } catch {
+        return toast("El contenido no es un JSON valido", true);
+      }
+
+      try {
+        await api(`/api/admin/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "PUT",
+          body: JSON.stringify({ value: parsed })
+        });
+        toast(`Guardado ${col}/${key}`);
+        await loadDbCollections();
+        document.getElementById("db-col-select").value = col;
+        loadDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDbRecord() {
+      const gameId = document.getElementById("db-game-select").value;
+      const col = document.getElementById("db-edit-col").value.trim();
+      const key = document.getElementById("db-edit-key").value.trim();
+      if (!confirm(`Eliminar permanentemente "${col}/${key}"?`)) return;
+      try {
+        await api(`/api/admin/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "DELETE"
+        });
+        toast(`Eliminado ${col}/${key}`);
+        prepareNewDbRecord();
+        loadDbCollections();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    // CRUD MUNDO PERSISTENTE (world.json)
+    async function loadWorldRooms() {
+      const gameId = document.getElementById("world-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await api(`/api/admin/world/${encodeURIComponent(gameId)}`);
+        currentWorldData = res.data || {};
+        const rooms = Object.keys(currentWorldData);
+        const rSel = document.getElementById("world-room-select");
+        rSel.innerHTML = rooms.length
+          ? rooms.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)} (${Object.keys(currentWorldData[r]).length} objs)</option>`).join("")
+          : `<option value="">(Sin objetos persistentes en salas)</option>`;
+        loadWorldObjects();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadWorldObjects() {
+      const roomId = document.getElementById("world-room-select").value;
+      const list = document.getElementById("world-objs-list");
+      if (!roomId || !currentWorldData[roomId]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">No hay objetos en esta sala.</div>`;
+        return;
+      }
+      const ids = Object.keys(currentWorldData[roomId]);
+      list.innerHTML = ids.map(id => `
+        <div class="list-item" onclick="editWorldObj('${escapeHtml(roomId)}', '${escapeHtml(id)}')">
+          <span>Objeto #${escapeHtml(id)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editWorldObj(roomId, objId) {
+      document.getElementById("world-editor-title").textContent = `Sala "${roomId}" - Objeto #${objId}`;
+      document.getElementById("world-edit-id").value = objId;
+      document.getElementById("world-edit-val").value = JSON.stringify(currentWorldData[roomId][objId], null, 2);
+      document.getElementById("world-delete-btn").style.display = "inline-block";
+    }
+
+    async function saveWorldObject() {
+      const gameId = document.getElementById("world-game-select").value;
+      const roomId = document.getElementById("world-room-select").value;
+      const objId = document.getElementById("world-edit-id").value;
+      if (!gameId || !roomId || !objId) return toast("Selecciona un objeto primero", true);
+
+      let props;
+      try {
+        props = JSON.parse(document.getElementById("world-edit-val").value);
+      } catch {
+        return toast("JSON invalido", true);
+      }
+
+      try {
+        await api(`/api/admin/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ props })
+        });
+        toast(`Objeto #${objId} actualizado y sincronizado`);
+        loadWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteWorldObject() {
+      const gameId = document.getElementById("world-game-select").value;
+      const roomId = document.getElementById("world-room-select").value;
+      const objId = document.getElementById("world-edit-id").value;
+      if (!confirm(`Destruir el objeto #${objId} de la sala "${roomId}"?`)) return;
+      try {
+        await api(`/api/admin/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "DELETE"
+        });
+        toast(`Objeto #${objId} destruido`);
+        document.getElementById("world-delete-btn").style.display = "none";
+        document.getElementById("world-edit-val").value = "";
+        loadWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    }
+
+    function refreshAll() {
+      if (!ADMIN_TOKEN) return;
+      loadOverview().catch(() => {});
+      if (document.getElementById("tab-keys").classList.contains("active")) loadAdminKeys();
+    }
+
+    // Inicio
+    renderDocs();
+
+    setInterval(() => {
+      if (ADMIN_TOKEN && document.getElementById("view-admin").classList.contains("active") && document.getElementById("auto-refresh").checked) {
+        loadOverview().catch(() => {});
+        if (document.getElementById("tab-keys").classList.contains("active")) loadAdminKeys();
+      }
+    }, 3000);
+  </script>
+</body>
+</html>
