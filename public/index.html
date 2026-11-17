@@ -303,7 +303,10 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtJson = (v) => { try { return JSON.stringify(v); } catch { return String(v); } };
 const short = (s, n = 90) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+const initials = (name) => {
+  const w = String(name || "?").trim().split(/[\s_.-]+/).filter(Boolean);
+  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || "?").slice(0, 2)).toUpperCase();
+};
 const mask = (uuid) => uuid.slice(0, 13) + "-••••-••••-••••••••••••";
 
 const LOGO = `<svg width="32" height="32" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="6" fill="#5EE6D0"></circle><ellipse cx="17" cy="17" rx="15" ry="7" fill="none" stroke="#8B7CFF" stroke-width="1.6" transform="rotate(-24 17 17)"></ellipse></svg>`;
@@ -652,7 +655,7 @@ async function renderProjects() {
 // ---------------------------------------------------------------------
 // UN PROYECTO
 // ---------------------------------------------------------------------
-const PTABS = [["resumen", "Resumen"], ["salas", "Salas en vivo"], ["datos", "Base de datos"], ["mundo", "Objetos del mundo"], ["claves", "Claves y ajustes"]];
+const PTABS = [["resumen", "Resumen"], ["salas", "Salas en vivo"], ["jugadores", "Jugadores"], ["datos", "Base de datos"], ["mundo", "Objetos del mundo"], ["claves", "Claves y ajustes"]];
 function connectSnippet(key = "[TU CLAVE]", version = "1.0") {
   const https = location.protocol === "https:";
   const port = location.port || (https ? "443" : "80");
@@ -670,6 +673,7 @@ async function renderProject(pid, tab) {
   const tabs = `<nav class="tabs" aria-label="Secciones del proyecto">${PTABS.map(([id, t]) => `<a href="#/proyecto/${esc(pid)}/${id}" class="${tab === id ? "on" : ""}" ${tab === id ? 'aria-current="page"' : ""}>${t}</a>`).join("")}</nav>`;
   topDash(crumbs, tabs);
   if (tab === "resumen") return tabResumen(P);
+  if (tab === "jugadores") return tabJugadores(P);
   if (tab === "datos") return tabDatos(P);
   if (tab === "mundo") return tabMundo(P);
   if (tab === "claves") return tabClaves(P);
@@ -861,6 +865,77 @@ function tabMundo(P) {
   $("#app").innerHTML = `<div id="wbox"></div>`;
   const spaces = P.channels.map((c) => ({ ns: c.ns, label: "Versión " + c.gameId }));
   return worldPanel($("#wbox"), { api: dev, spaces, baseOf: (ns) => `/api/dev/world/${encodeURIComponent(ns)}`, selKey: "w:" + P.id });
+}
+
+// ---------------------------------------------------------------------
+// Proyecto · JUGADORES (cuentas de jugador)
+// ---------------------------------------------------------------------
+function timeAgo(iso) {
+  const t = Date.parse(iso || "");
+  if (!t) return "—";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return "Ahora";
+  if (s < 3600) return `Hace ${Math.round(s / 60)} min`;
+  if (s < 86400) return `Hace ${Math.round(s / 3600)} h`;
+  const d = Math.round(s / 86400);
+  return d === 1 ? "Ayer" : `Hace ${d} días`;
+}
+const PFILTERS = [["todos", "Todos"], ["linea", "En línea"], ["reg", "Con usuario"], ["ban", "Bloqueados"]];
+async function tabJugadores(P) {
+  S.proj = P;
+  const f = S.sel["pf:" + P.id] || "todos";
+  const q = S.sel["pq:" + P.id] || "";
+  const r = await dev(`/api/dev/projects/${encodeURIComponent(P.id)}/players?limit=500&q=${encodeURIComponent(q)}`);
+  if (route().b !== "jugadores") return;
+  const rows = r.players.filter((p) => f === "todos" || (f === "linea" && p.online && !p.banned) || (f === "reg" && p.user) || (f === "ban" && p.banned));
+  S.players = Object.fromEntries(r.players.map((p) => [p.uid, p]));
+  const hadFocus = document.activeElement && document.activeElement.id === "pl-q";
+  const pos = hadFocus ? document.activeElement.selectionStart : 0;
+  $("#app").innerHTML = `<div class="wrap page">
+    <div class="stats">
+      <div class="stat"><span>Cuentas</span><b>${r.total}</b></div>
+      <div class="stat"><span>Con usuario</span><b>${r.registered}</b></div>
+      <div class="stat"><span>En línea ahora</span><b style="color:var(--accent)">${r.online}</b></div>
+    </div>
+    <section class="card">
+      <div class="card-head">
+        <label style="flex:1 1 320px; display:flex; align-items:center; gap:10px; background:var(--bg); border:1px solid var(--line-2); border-radius:10px; padding:0 14px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#93A0BD" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+          <span style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)">Buscar jugador</span>
+          <input type="search" id="pl-q" value="${esc(q)}" placeholder="Buscar por nombre, usuario o id…" style="border:none; background:transparent; padding-left:0; min-height:42px; outline:none;">
+        </label>
+        <div role="group" aria-label="Filtro" style="display:flex; gap:6px; flex-wrap:wrap;">
+          ${PFILTERS.map(([id, t]) => `<button type="button" class="btn btn-sm ${id === f ? "btn-soft" : "btn-ghost"}" style="border-radius:999px; ${id === f ? "border-color:var(--accent)" : ""}" aria-pressed="${id === f}" data-act="pl-filter" data-f="${id}">${t}</button>`).join("")}
+        </div>
+      </div>
+      <div class="tbl-box"><table style="min-width:900px">
+        <thead><tr><th>Jugador</th><th>Cuenta</th><th>Última vez</th><th>Estado</th><th class="r">Acciones</th></tr></thead>
+        <tbody>${rows.map((p) => `<tr>
+          <td><div style="display:flex; align-items:center; gap:12px;">
+            <span class="ini" style="width:36px; height:36px; border-radius:10px; background:var(--surface-3); display:flex; align-items:center; justify-content:center; font-family:var(--display); font-weight:700; font-size:14px; color:var(--violet); flex:none">${esc(initials(p.name))}</span>
+            <div style="display:flex; flex-direction:column; gap:2px;"><span style="font-weight:500">${esc(p.name)}</span><span class="mono" style="font-size:12.5px; color:var(--muted-2)">${esc(p.uid)}</span></div>
+          </div></td>
+          <td>${p.user ? `<span class="tag tag-v" style="margin:0">@${esc(p.user)}</span>` : `<span class="pill">Invitado</span>`}</td>
+          <td style="color:var(--nav)">${esc(p.online ? "Ahora" : timeAgo(p.lastSeen))}</td>
+          <td>${p.banned ? `<span class="tag" style="margin:0; color:var(--danger); border-color:var(--danger-line)">Bloqueado</span>`
+               : p.online ? `<span class="status on"><span class="dot on"></span>En línea</span>` : `<span class="status"><span class="dot"></span>Desconectado</span>`}</td>
+          <td class="r">
+            <button class="btn btn-soft btn-sm" type="button" data-act="pl-data" data-uid="${esc(p.uid)}">Ver sus datos</button>
+            ${p.banned ? `<button class="btn btn-ghost btn-sm" type="button" data-act="pl-ban" data-uid="${esc(p.uid)}" data-ban="0">Desbloquear</button>`
+                       : `<button class="btn btn-danger btn-sm" type="button" data-act="pl-ban" data-uid="${esc(p.uid)}" data-ban="1">Bloquear</button>`}
+            <button class="btn btn-danger btn-sm" type="button" data-act="pl-del" data-uid="${esc(p.uid)}">Borrar</button>
+          </td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+      ${rows.length ? "" : `<p class="empty">${r.total ? "Ningún jugador con ese filtro." : "Todavía no hay cuentas. Aparecen cuando tu juego usa <code>orb_login_guest()</code> u <code>orb_register()</code>."}</p>`}
+    </section>
+    <div class="note">${ICON_INFO}<p><b>Bloquear</b> saca al jugador al momento y no lo deja volver a entrar a su cuenta. <b>Borrar</b> elimina la cuenta y sus datos <code>mi_…</code>. «Ver sus datos» abre sus colecciones <code>mi_…</code>.</p></div>
+  </div>`;
+  const input = $("#pl-q");
+  if (hadFocus) { input.focus(); input.setSelectionRange(pos, pos); }
+  let tmo = null;
+  input.oninput = () => { clearTimeout(tmo); tmo = setTimeout(() => { S.sel["pq:" + P.id] = input.value.trim(); tabJugadores(P).catch(fail); }, 300); };
+  every(5000, () => { if ($("#json-modal").hidden && document.activeElement?.id !== "pl-q") tabJugadores(P).catch(() => {}); });
 }
 
 // ---------------------------------------------------------------------
@@ -1712,6 +1787,36 @@ const ACTIONS = {
     if (!(await ask({ title: `Borrar la clave «${d.label}»`, text: "Los jugadores que la usan se desconectan y ya no podrá entrar. Los datos del proyecto se quedan.", confirm: "Borrar clave", danger: true }))) return;
     await dev(`/api/dev/keys/${encodeURIComponent(d.uuid)}`, { method: "DELETE" });
     toast("Clave borrada"); render();
+  },
+  "pl-filter"(d) { S.sel["pf:" + S.proj.id] = d.f; render(); },
+  async "pl-data"(d) {
+    const pid = S.proj.id, uid = d.uid;
+    const { data } = await dev(`/api/dev/db/${encodeURIComponent(pid)}`);
+    const mine = {};
+    for (const [col, docs] of Object.entries(data || {})) if (col.startsWith("mi_") && docs && docs[uid] !== undefined) mine[col] = docs[uid];
+    const name = S.players?.[uid]?.name || uid;
+    editJson({ title: `Datos de ${name}`, value: mine, onSave: async (_k, v) => {
+      if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("Tiene que ser un objeto: { \"mi_perfil\": {...} }");
+      for (const [col, val] of Object.entries(v)) {
+        if (!col.startsWith("mi_")) throw new Error(`«${col}» no empieza con mi_`);
+        await dev(`/api/dev/db/${encodeURIComponent(pid)}/${encodeURIComponent(col)}/${encodeURIComponent(uid)}`, { method: "PUT", body: { value: val } });
+      }
+      for (const col of Object.keys(mine)) if (!(col in v)) await dev(`/api/dev/db/${encodeURIComponent(pid)}/${encodeURIComponent(col)}/${encodeURIComponent(uid)}`, { method: "DELETE" });
+      toast("Datos guardados");
+    } });
+  },
+  async "pl-ban"(d) {
+    const ban = d.ban === "1";
+    const name = S.players?.[d.uid]?.name || d.uid;
+    if (ban && !(await ask({ title: `Bloquear a ${name}`, text: "Se le saca del juego al momento y no podrá volver a entrar a su cuenta hasta que lo desbloquees.", confirm: "Bloquear", danger: true }))) return;
+    await dev(`/api/dev/projects/${encodeURIComponent(S.proj.id)}/players/${encodeURIComponent(d.uid)}`, { method: "PUT", body: { banned: ban } });
+    toast(ban ? "Jugador bloqueado" : "Jugador desbloqueado"); render();
+  },
+  async "pl-del"(d) {
+    const name = S.players?.[d.uid]?.name || d.uid;
+    if (!(await ask({ title: `Borrar la cuenta de ${name}`, text: "Se borra la cuenta y sus datos <code>mi_…</code>. No se puede deshacer.", confirm: "Borrar cuenta", danger: true }))) return;
+    await dev(`/api/dev/projects/${encodeURIComponent(S.proj.id)}/players/${encodeURIComponent(d.uid)}`, { method: "DELETE" });
+    toast("Cuenta borrada"); render();
   },
   async request(d) {
     await dev(`/api/dev/projects/${encodeURIComponent(S.proj.id)}/request`, { method: "POST", body: { service: d.svc } });

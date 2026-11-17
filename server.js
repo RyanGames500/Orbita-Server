@@ -377,6 +377,7 @@ function projectDetail(pid, withKeys) {
             host: hostOf(r),
             createdAt: r.createdAt || null,
             worldObjects: Object.keys(w.rooms[r.id] || {}).length,
+            ...roomPublic(r),
             players: r.members.map((id) => {
               const pl = clients.get(id);
               return pl
@@ -717,7 +718,22 @@ function createGameApi(gameId) {
     },
     moveToRoom(playerId, roomId, max = 0) {
       const c = clients.get(Number(playerId));
-      return c && c.gameId === gid ? joinRoom(c, String(roomId), max) : { ok: false };
+      return c && c.gameId === gid ? joinRoom(c, String(roomId), max, { force: true }) : { ok: false };
+    },
+    // Datos de una sala (o undefined) y cambiarlos desde el servidor
+    room(roomId) {
+      const r = getGame(gid).rooms.get(String(roomId));
+      return r ? { id: r.id, max: r.max, members: [...r.members], host: hostOf(r), ...roomPublic(r) } : undefined;
+    },
+    setRoom(roomId, { props, locked, private: priv, password } = {}) {
+      const r = getGame(gid).rooms.get(String(roomId));
+      if (!r) return false;
+      if (isObj(props)) r.props = cleanProps({ ...(r.props || {}), ...props });
+      if (typeof locked === "boolean") r.locked = locked;
+      if (typeof priv === "boolean") r.private = priv;
+      if (typeof password === "string") setRoomPassword(r, password);
+      sendRoom(getGame(gid), r.id, { t: "room_props", ...roomPublic(r) });
+      return true;
     },
     db: {
       get(a, b, c) {
@@ -812,18 +828,55 @@ function leaveRoom(c, notifySelf = true) {
   runScript(c.gameId, "onLeaveRoom", c, oldRoom);
 }
 
-function joinRoom(c, roomId, max = 0) {
+// ------------------------------------------------------------------
+// Datos de sala: nombre, mapa, modo… (los pone el host), contraseña, privada (no sale en la lista)
+// y cerrada (nadie más puede entrar, por ejemplo cuando empieza la partida)
+// ------------------------------------------------------------------
+const MAX_ROOM_PROPS_BYTES = 4096;
+const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin 0/O ni 1/I para que no se confundan
+function newRoomCode(game) {
+  for (;;) {
+    let code = "";
+    for (let i = 0; i < 6; i++) code += ROOM_CODE_CHARS[crypto.randomInt(ROOM_CODE_CHARS.length)];
+    if (!game.rooms.has(code)) return code;
+  }
+}
+function cleanProps(v) {
+  if (!isObj(v)) return {};
+  const p = cleanKeys(v, 32);
+  return jsonSize(p) <= MAX_ROOM_PROPS_BYTES ? p : {};
+}
+function setRoomPassword(room, pw) {
+  pw = String(pw ?? "").slice(0, 64);
+  if (!pw) { room.passSalt = ""; room.passHash = ""; return; }
+  room.passSalt = crypto.randomBytes(8).toString("hex");
+  room.passHash = sha256(room.passSalt + pw);
+}
+function roomPublic(room) {
+  return { props: room.props || {}, locked: !!room.locked, private: !!room.private, has_pw: !!room.passHash };
+}
+
+function joinRoom(c, roomId, max = 0, opts = {}) {
   roomId = str(roomId, 64);
   if (!roomId) return { ok: false, error: "bad_room" };
   const game = c.game;
   let room = game.rooms.get(roomId);
   if (room && room.members.includes(c.id)) return { ok: true };
+  if (room && !opts.force) {
+    if (room.locked) return { ok: false, error: "room_locked" };
+    if (room.passHash) {
+      if (!allowRate(c, "room_pw", 10)) return { ok: false, error: "rate_limited" };
+      if (!safeEqual(sha256(room.passSalt + String(opts.pw ?? "").slice(0, 64)), room.passHash)) return { ok: false, error: "wrong_password" };
+    }
+  }
   if (room && room.max > 0 && room.members.length >= room.max) return { ok: false, error: "room_full" };
   if (room && room.members.length >= MAX_ROOM_SIZE) return { ok: false, error: "room_full" };
 
   leaveRoom(c, false);
   if (!room) {
-    room = { id: roomId, createdAt: Date.now(), members: [], max: Math.max(0, Math.min(MAX_ROOM_SIZE, Number(max) || 0)) };
+    room = { id: roomId, createdAt: Date.now(), members: [], max: Math.max(0, Math.min(MAX_ROOM_SIZE, Number(max) || 0)),
+      props: cleanProps(opts.props), private: !!opts.private, locked: false, passSalt: "", passHash: "" };
+    if (opts.pw) setRoomPassword(room, opts.pw);
     game.rooms.set(roomId, room);
   }
   const used = new Set(room.members.map((id) => clients.get(id)?.slot));
@@ -844,6 +897,8 @@ function joinRoom(c, roomId, max = 0) {
     slot,
     players: others.map(playerInfo),
     world: Object.entries(objs).map(([id, p]) => ({ id: Number(id), p })),
+    max: room.max,
+    ...roomPublic(room),
   });
   sendRoom(game, roomId, { t: "join", ...playerInfo(c) }, c.id);
   log(`[${game.id}] ${c.id} entró a "${roomId}" (${room.members.length}${room.max ? "/" + room.max : ""}) puesto ${slot}`);
@@ -1023,8 +1078,33 @@ async function handleRequest(c, m) {
     case "join": {
       const roomId = str(m.rm, 64);
       if (!roomId) return { ok: false, d: "bad_room" };
-      const r = joinRoom(c, roomId, m.mx);
+      const r = joinRoom(c, roomId, m.mx, { pw: m.pw });
       return { ok: r.ok, d: r.ok ? roomId : r.error };
+    }
+    // Crear sala (si no das nombre, se inventa un código de 6 letras). Quien la crea queda de host.
+    case "room_create": {
+      let roomId = str(m.rm, 64);
+      if (roomId && c.game.rooms.has(roomId)) return { ok: false, d: "room_exists" };
+      if (!roomId) roomId = newRoomCode(c.game);
+      const r = joinRoom(c, roomId, m.mx, { pw: m.pw, private: m.private, props: m.props });
+      return { ok: r.ok, d: r.ok ? roomId : r.error };
+    }
+    // El host cambia los datos de su sala: props (se mezclan), locked, private, pw ("" = sin contraseña)
+    case "room_set": {
+      const room = c.game.rooms.get(c.roomId);
+      if (!room) return { ok: false, d: "not_in_room" };
+      if (hostOf(room) !== c.id) return { ok: false, d: "not_host" };
+      if (isObj(m.props)) {
+        const merged = { ...(room.props || {}), ...cleanKeys(m.props) };
+        for (const [k, v] of Object.entries(merged)) if (v === null) delete merged[k]; // null = borrar ese dato
+        if (Object.keys(merged).length > 32 || jsonSize(merged) > MAX_ROOM_PROPS_BYTES) return { ok: false, d: "props_too_large" };
+        room.props = merged;
+      }
+      if (typeof m.locked === "boolean") room.locked = m.locked;
+      if (typeof m.private === "boolean") room.private = m.private;
+      if (typeof m.pw === "string") setRoomPassword(room, m.pw);
+      sendRoom(c.game, room.id, { t: "room_props", ...roomPublic(room) });
+      return { ok: true, d: roomPublic(room) };
     }
     case "leave":
       leaveRoom(c, true);
@@ -1036,7 +1116,10 @@ async function handleRequest(c, m) {
       leaveQueue(c);
       return { ok: true, d: "" };
     case "rooms": {
-      const list = [...c.game.rooms.values()].map((r) => ({ id: r.id, players: r.members.length, max: r.max }));
+      // Las salas privadas no salen en la lista (se entra solo sabiendo el código)
+      const list = [...c.game.rooms.values()]
+        .filter((r) => !r.private)
+        .map((r) => ({ id: r.id, players: r.members.length, max: r.max, props: r.props || {}, locked: !!r.locked, has_pw: !!r.passHash }));
       return { ok: true, d: list };
     }
     case "players": {
@@ -1631,6 +1714,7 @@ async function handleHttp(req, res) {
                 id: r.id,
                 max: r.max,
                 host: hostOf(r),
+                ...roomPublic(r),
                 players: r.members.map((pid) => {
                   const p = clients.get(pid);
                   return p ? { id: p.id, slot: p.slot, pdata: p.pdata, state: p.state } : { id: pid };
@@ -1758,6 +1842,7 @@ async function handleHttp(req, res) {
             max: r.max,
             host: hostOf(r),
             createdAt: r.createdAt || null,
+            ...roomPublic(r),
             players: r.members.map((pid) => {
               const p = clients.get(pid);
               return p ? { id: p.id, slot: p.slot, pdata: p.pdata, state: p.state } : { id: pid };
@@ -1974,7 +2059,8 @@ async function handleHttp(req, res) {
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+    // no-cache: el navegador siempre pregunta si hay versión nueva del panel (así no se queda con la vieja)
+    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream", "Cache-Control": "no-cache" });
     return fs.createReadStream(filePath).pipe(res);
   }
 
