@@ -153,7 +153,10 @@ const keysRegistry = safeJSON(fs.existsSync(KEYS_FILE) ? fs.readFileSync(KEYS_FI
 const usersRegistry = safeJSON(fs.existsSync(USERS_FILE) ? fs.readFileSync(USERS_FILE, "utf8") : "{}", {});
 // Proyectos: un proyecto = un juego. Sus claves solo sirven para entrar; los datos son del proyecto.
 const projectsRegistry = safeJSON(fs.existsSync(PROJECTS_FILE) ? fs.readFileSync(PROJECTS_FILE, "utf8") : "{}", {});
-const dirty = { db: false, world: false, keys: false, users: false, projects: false };
+// Cuentas de jugador de cada juego/proyecto
+const PLAYERS_FILE = path.join(DATA_DIR, "players.json");
+const playersReg = safeJSON(fs.existsSync(PLAYERS_FILE) ? fs.readFileSync(PLAYERS_FILE, "utf8") : "{}", {});
+const dirty = { db: false, world: false, keys: false, users: false, projects: false, players: false };
 
 // Sesiones activas en memoria de desarrolladores (token -> userId)
 const devSessions = new Map();
@@ -165,6 +168,7 @@ function flush() {
     ["keys", KEYS_FILE, keysRegistry],
     ["users", USERS_FILE, usersRegistry],
     ["projects", PROJECTS_FILE, projectsRegistry],
+    ["players", PLAYERS_FILE, playersReg],
   ]) {
     if (!dirty[k]) continue;
     dirty[k] = false;
@@ -324,6 +328,7 @@ function deleteProject(pid) {
     loadedModules.delete(ns);
   }
   delete projectsRegistry[pid];
+  if (playersReg[pid]) { delete playersReg[pid]; dirty.players = true; }
   dirty.keys = dirty.db = dirty.world = dirty.projects = true;
 }
 function projectSummary(pid) {
@@ -339,6 +344,7 @@ function projectSummary(pid) {
     owner: p.owner || "",
     createdAt: p.createdAt || null,
     keys: projectKeys(pid).length,
+    accounts: Object.keys(playersReg[pid]?.accounts || {}).length,
     online,
     rooms,
     versions: channels.map((ns) => ns.slice(pid.length + 1)),
@@ -475,8 +481,187 @@ function sendRoom(game, roomId, obj, exceptId) {
     if (c && c.ws.readyState === WebSocket.OPEN) c.ws.send(txt);
   }
 }
+
+// ------------------------------------------------------------------
+// Cuentas de jugador (por proyecto)
+//   Invitado: el juego guarda un token en la PC del jugador y con eso vuelve a ser él.
+//   Usuario y contraseña: para entrar desde otra PC.
+//   Colecciones "mi_…": cada jugador solo lee y escribe lo suyo.
+// ------------------------------------------------------------------
+const MAX_ACCOUNTS_PER_GAME = Number(process.env.MAX_ACCOUNTS_PER_GAME) || 100000;
+const MAX_TOKENS_PER_ACCOUNT = 10;
+const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
+
+function pspace(ns) {
+  const id = safeKey(ns) || "default";
+  const sp = (playersReg[id] ||= { accounts: {}, users: {}, tokens: {} });
+  sp.accounts ||= {}; sp.users ||= {}; sp.tokens ||= {};
+  return sp;
+}
+function cleanName(v) {
+  return String(v ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, 24);
+}
+function newAccount(sp, extra = {}) {
+  let uid;
+  do uid = "u_" + crypto.randomBytes(6).toString("hex"); while (sp.accounts[uid]);
+  sp.accounts[uid] = {
+    name: "Jugador-" + uid.slice(-4).toUpperCase(),
+    guest: true,
+    createdAt: new Date().toISOString(),
+    lastSeen: new Date().toISOString(),
+    tokens: [],
+    ...extra,
+  };
+  dirty.players = true;
+  return uid;
+}
+function issueToken(sp, uid) {
+  const token = crypto.randomBytes(24).toString("hex");
+  const h = sha256(token);
+  const acc = sp.accounts[uid];
+  sp.tokens[h] = uid;
+  acc.tokens = [...(acc.tokens || []), h];
+  while (acc.tokens.length > MAX_TOKENS_PER_ACCOUNT) delete sp.tokens[acc.tokens.shift()];
+  dirty.players = true;
+  return { token, hash: h };
+}
+function authAs(c, sp, uid, hash) {
+  const acc = sp.accounts[uid];
+  c.uid = uid;
+  c.pname = acc.name;
+  c.tokenHash = hash;
+  acc.lastSeen = new Date().toISOString();
+  dirty.players = true;
+}
+function accountReply(c, token) {
+  const acc = pspace(c.dbNs).accounts[c.uid];
+  return { uid: c.uid, name: acc.name, user: acc.user || "", guest: !acc.user, ...(token ? { token } : {}) };
+}
+// Revisa un token guardado: devuelve "" si sirve, o el error
+function resumeWithToken(c, token) {
+  const sp = pspace(c.dbNs);
+  const h = sha256(token);
+  const uid = sp.tokens[h];
+  if (!uid || !sp.accounts[uid]) return "bad_token";
+  if (sp.accounts[uid].banned) return "banned";
+  authAs(c, sp, uid, h);
+  return "";
+}
+function kickAccount(ns, uid, code = "banned") {
+  for (const c of clients.values()) {
+    if (c.ready && c.dbNs === ns && c.uid === uid) {
+      send(c, { t: "err", code, msg: code === "banned" ? "Esta cuenta fue bloqueada" : "Tu cuenta fue borrada" });
+      c.ws.close();
+    }
+  }
+}
+function deleteAccount(ns, uid) {
+  const sp = pspace(ns);
+  const acc = sp.accounts[uid];
+  if (!acc) return false;
+  kickAccount(ns, uid, "deleted");
+  for (const h of acc.tokens || []) delete sp.tokens[h];
+  if (acc.user) delete sp.users[acc.user.toLowerCase()];
+  delete sp.accounts[uid];
+  // Sus datos en colecciones mi_…
+  const d = db[safeKey(ns)];
+  if (d) for (const [col, docs] of Object.entries(d)) if (col.startsWith("mi_") && docs && docs[uid] !== undefined) { delete docs[uid]; dirty.db = true; }
+  dirty.players = true;
+  return true;
+}
+function listAccounts(ns, q = "", limit = 200) {
+  const sp = pspace(ns);
+  const needle = String(q || "").toLowerCase();
+  let online = new Set();
+  for (const c of clients.values()) if (c.ready && c.dbNs === ns && c.uid) online.add(c.uid);
+  const all = Object.entries(sp.accounts)
+    .filter(([uid, a]) => !needle || uid.includes(needle) || (a.name || "").toLowerCase().includes(needle) || (a.user || "").toLowerCase().includes(needle))
+    .sort((a, b) => String(b[1].lastSeen).localeCompare(String(a[1].lastSeen)));
+  return {
+    total: Object.keys(sp.accounts).length,
+    registered: Object.values(sp.accounts).filter((a) => a.user).length,
+    online: online.size,
+    players: all.slice(0, limit).map(([uid, a]) => ({ uid, name: a.name, user: a.user || "", guest: !a.user, banned: !!a.banned, online: online.has(uid), createdAt: a.createdAt, lastSeen: a.lastSeen })),
+  };
+}
+
+async function handleAuth(c, m) {
+  const sp = pspace(c.dbNs);
+  switch (m.op) {
+    case "auth_guest": {
+      if (c.uid) return { ok: true, d: accountReply(c) };
+      if (!allowGlobalRate(`guest:${c.ip}`, 30)) return { ok: false, d: "rate_limited" };
+      if (Object.keys(sp.accounts).length >= MAX_ACCOUNTS_PER_GAME) return { ok: false, d: "too_many_accounts" };
+      const uid = newAccount(sp);
+      const t = issueToken(sp, uid);
+      authAs(c, sp, uid, t.hash);
+      return { ok: true, d: accountReply(c, t.token) };
+    }
+    case "auth_resume": {
+      const err = resumeWithToken(c, str(m.token, 128));
+      return err ? { ok: false, d: err } : { ok: true, d: accountReply(c) };
+    }
+    case "auth_register": {
+      if (!allowGlobalRate(`pauth:${c.ip}`, AUTH_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
+      const user = String(m.user ?? "").trim();
+      const pass = String(m.pass ?? "");
+      if (!/^[a-zA-Z0-9_.-]{3,24}$/.test(user)) return { ok: false, d: "bad_user" };
+      if (pass.length < 6 || pass.length > 128) return { ok: false, d: "bad_pass" };
+      if (sp.users[user.toLowerCase()]) return { ok: false, d: "user_taken" };
+      const salt = crypto.randomBytes(16).toString("hex");
+      const passHash = await hashPassword(pass, salt);
+      if (sp.users[user.toLowerCase()]) return { ok: false, d: "user_taken" }; // por si otro lo tomó mientras tanto
+      let uid = c.uid && sp.accounts[c.uid] && !sp.accounts[c.uid].user ? c.uid : ""; // invitado -> se queda con su progreso
+      if (!uid) {
+        if (Object.keys(sp.accounts).length >= MAX_ACCOUNTS_PER_GAME) return { ok: false, d: "too_many_accounts" };
+        uid = newAccount(sp);
+      }
+      Object.assign(sp.accounts[uid], { user, salt, passHash, guest: false });
+      if (sp.accounts[uid].name.startsWith("Jugador-")) sp.accounts[uid].name = user;
+      sp.users[user.toLowerCase()] = uid;
+      const t = issueToken(sp, uid);
+      authAs(c, sp, uid, t.hash);
+      return { ok: true, d: accountReply(c, t.token) };
+    }
+    case "auth_login": {
+      if (!allowGlobalRate(`pauth:${c.ip}`, AUTH_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
+      const uid = sp.users[String(m.user ?? "").trim().toLowerCase()];
+      const acc = uid && sp.accounts[uid];
+      const pass = String(m.pass ?? "").slice(0, 128);
+      if (!acc || !acc.passHash || !safeEqual(await hashPassword(pass, acc.salt), acc.passHash)) return { ok: false, d: "wrong_login" };
+      if (acc.banned) return { ok: false, d: "banned" };
+      const t = issueToken(sp, uid);
+      authAs(c, sp, uid, t.hash);
+      return { ok: true, d: accountReply(c, t.token) };
+    }
+    case "auth_logout": {
+      if (c.uid && c.tokenHash) {
+        const acc = sp.accounts[c.uid];
+        delete sp.tokens[c.tokenHash];
+        if (acc) acc.tokens = (acc.tokens || []).filter((h) => h !== c.tokenHash);
+        dirty.players = true;
+      }
+      c.uid = ""; c.pname = ""; c.tokenHash = "";
+      return { ok: true, d: "" };
+    }
+    case "set_name": {
+      if (!c.uid) return { ok: false, d: "not_logged_in" };
+      const name = cleanName(m.name);
+      if (!name) return { ok: false, d: "bad_name" };
+      sp.accounts[c.uid].name = name;
+      c.pname = name;
+      dirty.players = true;
+      if (c.roomId) sendRoom(c.game, c.roomId, { t: "name", id: c.id, name }, c.id);
+      return { ok: true, d: name };
+    }
+  }
+  return null;
+}
+
 function playerInfo(c) {
-  return { id: c.id, slot: c.slot, s: c.state, e: c.entities, pd: c.pdata };
+  const out = { id: c.id, slot: c.slot, s: c.state, e: c.entities, pd: c.pdata };
+  if (c.uid) { out.uid = c.uid; out.nm = c.pname; }
+  return out;
 }
 
 // ------------------------------------------------------------------
@@ -821,7 +1006,19 @@ function dbWriteCheck(g, col, key, value) {
 async function handleRequest(c, m) {
   const g = c.gameId;       // salas y objetos del mundo: por versión
   const dg = c.dbNs || g;   // base de datos: por proyecto
-  const col = str(m.c, 64), key = str(m.k, 128);
+  const col = str(m.c, 64);
+  let key = str(m.k, 128);
+  if (typeof m.op === "string" && (m.op.startsWith("auth_") || m.op === "set_name")) {
+    const r = await handleAuth(c, m);
+    if (r) return r;
+  }
+  // "mi_…": cada jugador solo lee y escribe su propio documento (la clave es su id de cuenta)
+  if (typeof m.op === "string" && m.op.startsWith("db_") && col.startsWith("mi_")) {
+    if (!c.uid) return { ok: false, d: "not_logged_in" };
+    if (m.op === "db_list") return { ok: true, d: Object.prototype.hasOwnProperty.call(peekDb(dg)[col] || {}, c.uid) ? [c.uid] : [] };
+    if (key && key !== c.uid) return { ok: false, d: "forbidden_key" };
+    key = c.uid;
+  }
   switch (m.op) {
     case "join": {
       const roomId = str(m.rm, 64);
@@ -997,7 +1194,10 @@ function onMessage(c, raw) {
     c.dbNs = projectId || scopedGameId;
     c.game = getGame(c.gameId);
     getGameModule(c.gameId);
-    send(c, { t: "welcome", id: c.id, time: Date.now(), proto: PROTOCOL });
+    // Si el juego trae el token de la cuenta del jugador, entra ya con su cuenta
+    let authErr = "";
+    if (typeof m.auth === "string" && m.auth) authErr = resumeWithToken(c, m.auth.slice(0, 128));
+    send(c, { t: "welcome", id: c.id, time: Date.now(), proto: PROTOCOL, ...(c.uid ? { uid: c.uid, name: c.pname } : {}), ...(authErr ? { auth_err: authErr } : {}) });
     log(`[${c.gameId}] ${c.id} conectado (${countActivePlayersByKey(keyInfo.keyId)} activos en clave)`);
     runScript(c.gameId, "onConnect", c);
     return;
@@ -1179,6 +1379,33 @@ setInterval(() => {
   for (const [t, sess] of devSessions) if (now > sess.expires) devSessions.delete(t);
 }, 3600 * 1000).unref();
 
+
+function playersRoute(req, res, url, ns, uid) {
+  return (async () => {
+    if (!uid && req.method === "GET") {
+      return sendJson(res, 200, { ok: true, ...listAccounts(ns, url.searchParams.get("q") || "", Math.min(1000, Number(url.searchParams.get("limit")) || 200)) });
+    }
+    const sp = pspace(ns);
+    const acc = uid && sp.accounts[uid];
+    if (!acc) return sendJson(res, 404, { ok: false, error: "Jugador no encontrado" });
+    if (req.method === "PUT") {
+      const body = await readBody(req);
+      if (typeof body.banned === "boolean") {
+        acc.banned = body.banned;
+        if (body.banned) kickAccount(ns, uid, "banned");
+      }
+      if (typeof body.name === "string" && cleanName(body.name)) acc.name = cleanName(body.name);
+      dirty.players = true;
+      return sendJson(res, 200, { ok: true });
+    }
+    if (req.method === "DELETE") {
+      deleteAccount(ns, uid);
+      return sendJson(res, 200, { ok: true });
+    }
+    return sendJson(res, 404, { ok: false, error: "not_found" });
+  })();
+}
+
 async function handleHttp(req, res) {
   const urlObj = new URL(req.url, "http://localhost");
   const pathname = urlObj.pathname;
@@ -1276,6 +1503,14 @@ async function handleHttp(req, res) {
       createKey(pid, "Desarrollo", user);
       createKey(pid, "Publicado", user);
       return sendJson(res, 200, { ok: true, project: projectDetail(pid, true) });
+    }
+
+    // Jugadores del proyecto: GET lista · PUT {banned, name} · DELETE borra la cuenta
+    const plMatch = pathname.match(/^\/api\/dev\/projects\/([^/]+)\/players(?:\/([^/]+))?$/);
+    if (plMatch) {
+      const pid = safeKey(decodeURIComponent(plMatch[1]));
+      if (!isMine(pid)) return sendJson(res, 404, { ok: false, error: "Proyecto no encontrado" });
+      return playersRoute(req, res, urlObj, pid, plMatch[2] ? decodeURIComponent(plMatch[2]) : "");
     }
 
     const projMatch = pathname.match(/^\/api\/dev\/projects\/([^/]+)(?:\/([a-z]+))?$/);
@@ -1579,6 +1814,9 @@ async function handleHttp(req, res) {
       }
     }
 
+    const admPl = pathname.match(/^\/api\/admin\/players\/([^/]+)(?:\/([^/]+))?$/);
+    if (admPl) return playersRoute(req, res, urlObj, safeKey(decodeURIComponent(admPl[1])), admPl[2] ? decodeURIComponent(admPl[2]) : "");
+
     // GET /api/admin/projects -> todos los proyectos (con pedidos de IA / Discord)
     if (pathname === "/api/admin/projects" && req.method === "GET") {
       return sendJson(res, 200, { ok: true, projects: Object.keys(projectsRegistry).map((pid) => projectSummary(pid)) });
@@ -1717,6 +1955,7 @@ async function handleHttp(req, res) {
       }
 
       if (db[g]) { delete db[g]; dirty.db = true; }
+      if (playersReg[g]) { delete playersReg[g]; dirty.players = true; }
       if (world[g]) { delete world[g]; dirty.world = true; }
       games.delete(g);
       loadedModules.delete(g);
@@ -1768,7 +2007,7 @@ wss.on("connection", (ws, req) => {
     id: nextId++, ws, ip, ready: false, apiKeyId: "", gameId: "", game: null,
     roomId: "", slot: -1, queue: null,
     state: {}, entities: {}, pdata: {},
-    lastPing: Date.now(), rate: {}, rateWindow: Date.now(), rateCount: 0,
+    lastPing: Date.now(), rate: {}, rateWindow: Date.now(), rateCount: 0, uid: "", pname: "", tokenHash: "",
   };
   clients.set(c.id, c);
   // Si no manda "hello" a tiempo, se cierra (para que nadie acapare conexiones sin entrar)

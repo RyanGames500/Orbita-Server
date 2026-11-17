@@ -194,9 +194,9 @@
   .prm span { flex: 1 1 280px; color: var(--muted); line-height: 1.6; }
   .ideas, .ojo { border-radius: 12px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
   .ideas { background: #10192B; border: 1px solid #1D3A44; }
-  .ideas b { color: var(--accent); font-size: 14px; }
+  .ideas > b { color: var(--accent); font-size: 14px; }
   .ojo { background: #1A1424; border: 1px solid #3A2A44; }
-  .ojo b { color: var(--gold); font-size: 14px; }
+  .ojo > b { color: var(--gold); font-size: 14px; }
   .ideas ul, .ojo ul { margin: 0; padding-left: 20px; color: var(--text-2); line-height: 1.7; }
   .fn li code, .fn p code, .prm span code, .sub code, .note code { color: var(--text); font-size: 13.5px; }
 
@@ -929,7 +929,7 @@ function tabClaves(P) {
 const DOC_CATS = [
   ["rapido", "Primer juego (5 min)"], ["conexion", "Conexión y red"], ["salas", "Salas y partida rápida"],
   ["jugadores", "Jugadores, entidades y eventos"], ["datos", "Base de datos y mundo"], ["servidor", "Servidor, IA y Discord"],
-  ["proyectos", "Proyectos, claves y versiones"], ["todo", "Ver todo"],
+  ["cuentas", "Cuentas de jugador"], ["proyectos", "Proyectos, claves y versiones"], ["todo", "Ver todo"],
 ];
 // Clave de ejemplo (ficticia). La real sale en el Dashboard → Claves y ajustes.
 const EJ_KEY = "3f9a1c2e-7b4d-4e8a-9c21-5d6e7f8a9b0c";
@@ -1202,7 +1202,7 @@ orb_on("golpe", function(_d, _from) { vida -= _d.dano; });`,
     ojo: ["Solo llega si el otro está en tu misma sala."] },
   { cat: "jugadores", title: "Eventos del sistema",
     desc: "Llegan solos; escúchalos con <code>orb_on</code>.",
-    params: [["ORB_EV_CONNECTED", "<code>{ my_id }</code> — te conectaste."], ["ORB_EV_DISCONNECTED", "<code>{ reason }</code> — se cortó (se reintenta sola)."], ["ORB_EV_ROOM", "<code>{ name, host, slot }</code> — entraste a una sala (<code>name</code> = \"\" si saliste)."], ["ORB_EV_JOINED", "<code>{ player, slot }</code> — alguien entró a tu sala."], ["ORB_EV_LEFT", "<code>{ player }</code> — alguien salió."], ["ORB_EV_HOST", "<code>{ player }</code> — cambió el host."], ["ORB_EV_QUEUE", "<code>{ count, size }</code> — cómo va la búsqueda de partida."], ["ORB_EV_PLAYER_DATA", "<code>{ player }</code> — el servidor cambió los datos de un jugador."], ["ORB_EV_KICKED", "<code>{ by }</code> — te expulsaron."], ["ORB_EV_DISCORD", "<code>{ channel, user, user_id, msg }</code> — mensaje de Discord."], ["ORB_EV_ERROR", "<code>{ code, msg }</code> — algo salió mal."]] },
+    params: [["ORB_EV_CONNECTED", "<code>{ my_id }</code> — te conectaste."], ["ORB_EV_DISCONNECTED", "<code>{ reason }</code> — se cortó (se reintenta sola)."], ["ORB_EV_ROOM", "<code>{ name, host, slot }</code> — entraste a una sala (<code>name</code> = \"\" si saliste)."], ["ORB_EV_JOINED", "<code>{ player, slot }</code> — alguien entró a tu sala."], ["ORB_EV_LEFT", "<code>{ player }</code> — alguien salió."], ["ORB_EV_HOST", "<code>{ player }</code> — cambió el host."], ["ORB_EV_QUEUE", "<code>{ count, size }</code> — cómo va la búsqueda de partida."], ["ORB_EV_PLAYER_DATA", "<code>{ player }</code> — el servidor cambió los datos de un jugador."], ["ORB_EV_KICKED", "<code>{ by }</code> — te expulsaron."], ["ORB_EV_DISCORD", "<code>{ channel, user, user_id, msg }</code> — mensaje de Discord."], ["ORB_EV_LOGIN", "<code>{ uid, name, user, guest }</code> — entraste a tu cuenta de jugador."], ["ORB_EV_ERROR", "<code>{ code, msg }</code> — algo salió mal."]] },
 
   // ===================== DATOS =====================
   { cat: "datos", title: "orb_db_set(colección, clave, valor, [callback])",
@@ -1254,7 +1254,7 @@ orb_db_list("guardado_" + nombre, function(_ok, _claves) {
     ideas: ["Mostrar las ranuras de guardado.", "Ver qué niveles hechos por jugadores existen (cada nivel guardado con su nombre como clave)."] },
   { cat: "datos", title: "Colecciones protegidas: ro_ y priv_",
     desc: "El nombre de la colección decide quién puede escribir en ella.",
-    params: [["ro_…", "Los jugadores pueden <b>leer</b> pero no escribir. La escribe tu lógica del servidor o tú desde el Dashboard. Ej.: <code>ro_ranking</code>, <code>ro_tienda</code>, <code>ro_config</code>."], ["priv_… o _…", "Solo el servidor puede leer y escribir. Ej.: <code>priv_monedas</code>."], ["cualquier otro", "Los jugadores leen y escriben. Para cosas que no importa si alguien las truca."]],
+    params: [["mi_…", "Cada jugador con cuenta solo lee y escribe <b>lo suyo</b>. Ver <b>Cuentas de jugador</b>."], ["ro_…", "Los jugadores pueden <b>leer</b> pero no escribir. La escribe tu lógica del servidor o tú desde el Dashboard. Ej.: <code>ro_ranking</code>, <code>ro_tienda</code>, <code>ro_config</code>."], ["priv_… o _…", "Solo el servidor puede leer y escribir. Ej.: <code>priv_monedas</code>."], ["cualquier otro", "Los jugadores leen y escriben. Para cosas que no importa si alguien las truca."]],
     code: `// Leer la tienda (los precios los pones tú en el Dashboard)
 orb_db_get("ro_tienda", "precios", function(_ok, _p) {
     if (_ok) precio_espada = _p.espada;
@@ -1299,7 +1299,7 @@ orb_request_server("comprar", { item: "espada" }, function(_ok, _r) {
     ideas: ["<b>Compras</b> con moneda del juego.", "<b>Reclamar el premio diario</b> (el servidor revisa la fecha).", "<b>Validar un récord</b> antes de ponerlo en el ranking."] },
   { cat: "servidor", title: "Lógica en el servidor (games/*.js)",
     desc: "Código JavaScript que corre en el servidor de Órbita para tu proyecto. Hoy lo instala el administrador del servidor: mándale tu archivo. Se llama <code>games/&lt;id_del_proyecto&gt;.js</code> (el id sale en Claves y ajustes). Todas las funciones son opcionales.",
-    params: [["onConnect(api, p) · onDisconnect(api, p)", "Alguien se conectó o se fue."], ["onJoinRoom(api, p, sala) · onLeaveRoom(api, p, sala)", "Alguien entró o salió de una sala."], ["onTick(api)", "Cada 100 ms (temporizadores, rondas)."], ["onEvent(api, p, nombre, datos)", "Llega con <code>orb_send_server</code>."], ["onRequest(api, p, nombre, datos)", "Llega con <code>orb_request_server</code>. Lo que devuelvas es la respuesta; si lanzas un error, ok = false."], ["api", "<code>sendTo</code>, <code>sendToRoom</code>, <code>setPlayerData</code>, <code>moveToRoom</code>, <code>playersInRoom</code>, <code>hostOf</code>, <code>db.get/set/delete/list</code>, <code>log</code>."]],
+    params: [["onConnect(api, p) · onDisconnect(api, p)", "Alguien se conectó o se fue."], ["onJoinRoom(api, p, sala) · onLeaveRoom(api, p, sala)", "Alguien entró o salió de una sala."], ["onTick(api)", "Cada 100 ms (temporizadores, rondas)."], ["onEvent(api, p, nombre, datos)", "Llega con <code>orb_send_server</code>."], ["onRequest(api, p, nombre, datos)", "Llega con <code>orb_request_server</code>. Lo que devuelvas es la respuesta; si lanzas un error, ok = false."], ["p (el jugador)", "<code>p.id</code>, <code>p.roomId</code>, <code>p.slot</code>, <code>p.state</code>, <code>p.uid</code> (id de su cuenta, \"\" si no tiene) y <code>p.pname</code> (su nombre)."], ["api", "<code>sendTo</code>, <code>sendToRoom</code>, <code>setPlayerData</code>, <code>moveToRoom</code>, <code>playersInRoom</code>, <code>hostOf</code>, <code>db.get/set/delete/list</code>, <code>log</code>."]],
     code: `// games/p_0123456789.js
 module.exports = {
   onEvent(api, p, nombre, datos) {
@@ -1346,6 +1346,88 @@ orb_on(ORB_EV_DISCORD, function(_d, _from) {
     array_push(mensajes, "[Discord] " + _d.user + ": " + _d.msg);
 });`,
     ideas: ["Anunciar récords o partidas abiertas en tu servidor de Discord.", "Chat que conecta el juego con Discord."] },
+
+
+  // ===================== CUENTAS DE JUGADOR =====================
+  { cat: "cuentas", title: "¿Para qué sirven las cuentas de jugador?",
+    desc: "Sin cuenta, tu juego no sabe quién es quién: si guardas el progreso con el nombre del jugador, otro puede ponerse el mismo nombre y tocar sus datos. Con cuenta, cada jugador tiene un <b>id fijo</b> (<code>orb_me()</code>) y puede guardar en colecciones <code>mi_…</code> que <b>nadie más puede leer ni escribir</b>.",
+    ideas: ["Guardado en la nube seguro.", "Rankings donde cada récord es de una cuenta (no de un nombre que cualquiera puede copiar).", "Amigos, inventarios, compras dentro del juego… todo lo que necesita saber quién es el jugador."],
+    ojo: ["Las cuentas son de tu <b>proyecto</b>: un jugador de tu juego A no existe en tu juego B.", "El token de la cuenta se guarda en <code>orbita.ini</code> en la PC del jugador. Si tu juego también usa archivos .ini, cierra el tuyo (<code>ini_close()</code>) en el mismo evento donde lo abres."] },
+  { cat: "cuentas", title: "orb_login_guest([callback])",
+    desc: "Entra como <b>invitado</b>, sin registrarse. La primera vez crea una cuenta y guarda su token en esta PC; las siguientes veces vuelve a la misma cuenta (también al reconectar). Se puede llamar antes de que termine de conectar.",
+    returns: "El callback recibe <code>(ok, datos)</code> con <code>{ uid, name, user, guest }</code>. También llega el evento <code>ORB_EV_LOGIN</code> con lo mismo.",
+    code: `// Create de obj_control
+orb_connect();
+orb_login_guest(function(_ok, _d) {
+    if (_ok) show_debug_message("Hola " + _d.name + " (" + _d.uid + ")");
+});`,
+    ideas: ["Llámala siempre al iniciar: el jugador tiene cuenta sin hacer nada.", "Más adelante le ofreces \"Crear usuario\" para que no pierda su progreso si cambia de PC."],
+    ojo: ["Si el jugador borra los archivos del juego o cambia de PC, un invitado pierde su cuenta. Para eso está <code>orb_register</code>."] },
+  { cat: "cuentas", title: "orb_register(usuario, contraseña, [callback])",
+    desc: "Crea usuario y contraseña. Si el jugador ya era invitado, <b>se queda con su progreso</b> (la misma cuenta pasa a tener usuario).",
+    params: [["usuario", "3 a 24 letras, números, <code>_</code> <code>.</code> o <code>-</code>. No se repite (sin importar mayúsculas)."], ["contraseña", "6 caracteres o más."], ["callback", "<code>(ok, datos_o_error)</code>. Errores: <code>user_taken</code>, <code>bad_user</code>, <code>bad_pass</code>, <code>rate_limited</code>."]],
+    code: `// Botón "Crear cuenta" de tu menú
+orb_register(txt_usuario, txt_clave, function(_ok, _r) {
+    if (_ok) mensaje = "¡Listo! Ya puedes entrar desde cualquier PC";
+    else if (_r == "user_taken") mensaje = "Ese usuario ya existe";
+    else if (_r == "bad_user") mensaje = "Usa de 3 a 24 letras o números";
+    else if (_r == "bad_pass") mensaje = "La contraseña debe tener 6 o más";
+});`,
+    ideas: ["Ofrécela después de la primera partida (\"Guarda tu progreso\"), no al principio: así nadie se va por tener que registrarse.", "Para pedir el texto puedes usar <code>get_string_async</code> o tu propio campo de texto."] },
+  { cat: "cuentas", title: "orb_login(usuario, contraseña, [callback])",
+    desc: "Entra con usuario y contraseña, por ejemplo desde otra PC. Guarda el token, así la próxima vez entra solo.",
+    params: [["callback", "<code>(ok, datos_o_error)</code>. Errores: <code>wrong_login</code>, <code>banned</code>, <code>rate_limited</code>."]],
+    code: `orb_login(txt_usuario, txt_clave, function(_ok, _r) {
+    if (_ok) room_goto(rm_menu);
+    else mensaje = (_r == "wrong_login") ? "Usuario o contraseña incorrectos" : "No se pudo entrar";
+});`,
+    ojo: ["Después de varios intentos fallidos seguidos te llega <code>rate_limited</code>: espera un minuto."] },
+  { cat: "cuentas", title: "orb_logout([callback])",
+    desc: "Sale de la cuenta y borra el token guardado en esta PC. Para volver a entrar: <code>orb_login</code> o <code>orb_login_guest</code> (que crea otro invitado).",
+    code: `// Botón "Cerrar sesión"
+orb_logout();
+room_goto(rm_login);`,
+    ojo: ["Si el jugador era invitado sin usuario, al cerrar sesión pierde el acceso a esa cuenta. Avísale antes."] },
+  { cat: "cuentas", title: "orb_set_name(nombre, [callback])",
+    desc: "Cambia el nombre de la cuenta (hasta 24 letras). Los de tu sala lo ven al momento. Al principio todos se llaman <code>Jugador-XXXX</code> (o su usuario si se registraron).",
+    code: `orb_set_name("Ana", function(_ok, _nombre) {
+    if (_ok) show_debug_message("Ahora te llamas " + _nombre);
+});`,
+    ideas: ["Pídele el nombre la primera vez que entra (si <code>string_pos(\"Jugador-\", orb_my_name()) == 1</code>).", "Úsalo en el chat y en el marcador en vez de mandarlo en <code>global.orb_state</code>."] },
+  { cat: "cuentas", title: "orb_me() · orb_my_name() · orb_is_logged_in()",
+    desc: "<code>orb_me()</code> es el id de tu cuenta (\"\" si no tienes). Es fijo: no cambia al reconectar, a diferencia de <code>orb_my_id()</code>.",
+    code: `if (!orb_is_logged_in()) exit;
+draw_text(10, 10, "Cuenta: " + orb_my_name());`,
+    ideas: ["Usa <code>orb_me()</code> como clave cuando guardes cosas del jugador en colecciones normales (por ejemplo en un ranking)."] },
+  { cat: "cuentas", title: "orb_player_uid(id) · orb_player_name(id)",
+    desc: "El id de cuenta y el nombre de otro jugador de tu sala (\"\" si no tiene cuenta). En tu objeto de otros jugadores también tienes <code>orb_uid</code> y <code>orb_name</code>.",
+    code: `// obj_otro_jugador → Draw
+event_inherited();
+draw_set_halign(fa_center);
+draw_text(x, y - 36, orb_name);`,
+    ideas: ["Lista de jugadores del lobby con sus nombres.", "Botón \"Agregar amigo\" guardando su <code>orb_player_uid</code>."] },
+  { cat: "cuentas", title: "Colecciones mi_: datos de cada jugador",
+    desc: "Las colecciones que empiezan con <code>mi_</code> son privadas de cada cuenta: usa <code>\"\"</code> (o <code>orb_me()</code>) como clave y el servidor guarda en la tuya. Nadie más puede leerlas ni escribirlas, y se borran si borras la cuenta.",
+    code: `// Guardar progreso del jugador
+orb_db_merge("mi_perfil", "", { nivel: nivel, oro: oro });
+
+// Cargarlo al entrar
+orb_on(ORB_EV_LOGIN, function(_d, _from) {
+    orb_db_get("mi_perfil", "", function(_ok, _p) {
+        if (_ok) { nivel = _p.nivel; oro = _p.oro; }
+    });
+});`,
+    params: [["not_logged_in", "Error si usas <code>mi_</code> sin cuenta. Llama antes <code>orb_login_guest()</code>."], ["forbidden_key", "Error si intentas leer o escribir la de otro jugador."]],
+    ideas: ["<code>mi_perfil</code>, <code>mi_inventario</code>, <code>mi_ajustes</code>, <code>mi_logros</code>.", "Sigue sin evitar que alguien se ponga oro con un programa: para la moneda usa la lógica del servidor y <code>priv_</code>."] },
+  { cat: "cuentas", title: "ORB_EV_LOGIN y errores de cuenta",
+    desc: "<code>ORB_EV_LOGIN</code> llega cada vez que entras a tu cuenta (también al reconectar solo). Si la cuenta guardada ya no sirve, llega <code>ORB_EV_ERROR</code> con <code>bad_token</code> (se borró) o <code>banned</code> (el desarrollador la bloqueó).",
+    code: `orb_on(ORB_EV_LOGIN, function(_d, _from) {
+    nombre = _d.name;
+});
+orb_on(ORB_EV_ERROR, function(_e, _from) {
+    if (_e.code == "banned") show_message("Tu cuenta está bloqueada");
+});`,
+    ideas: ["Carga el progreso (<code>mi_perfil</code>) dentro de <code>ORB_EV_LOGIN</code>: así funciona tanto al abrir el juego como al reconectar."] },
 
   // ===================== PROYECTOS =====================
   { cat: "proyectos", title: "Proyecto = un juego",
