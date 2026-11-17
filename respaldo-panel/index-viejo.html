@@ -1,0 +1,2215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ORBITA - Motor Multijugador Gratuito para GameMaker</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --surface: #131822;
+      --surface-2: #1a2130;
+      --border: #263044;
+      --text: #e6edf7;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Barra superior */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .brand { font-weight: 700; font-size: 1.15rem; display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .nav-links { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+    /* Vistas */
+    .view { display: none; flex-direction: column; min-height: calc(100vh - 58px); }
+    .view.active { display: flex; }
+
+    /* Portada publica */
+    .hero {
+      text-align: center;
+      padding: 3.75rem 1.5rem 2.75rem;
+      border-bottom: 1px solid var(--border);
+      background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.12), transparent 65%);
+    }
+    .hero h1 { font-size: clamp(1.9rem, 4vw, 2.8rem); font-weight: 800; line-height: 1.2; margin-bottom: 0.85rem; }
+    .hero p { color: var(--muted); font-size: 1.05rem; max-width: 660px; margin: 0 auto 1.75rem; }
+    .hero-actions { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.25rem;
+    }
+
+    a.btn { text-decoration: none; display: inline-block; text-align: center; }
+
+    /* Documentacion */
+    .docs-layout {
+      display: grid;
+      grid-template-columns: 255px 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 820px) { .docs-layout { grid-template-columns: 1fr; } }
+
+    .docs-sidebar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      position: sticky;
+      top: 74px;
+    }
+    .doc-cat-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 0.25rem;
+    }
+    .doc-cat-btn:hover { background: var(--surface-2); color: var(--text); }
+    .doc-cat-btn.active { background: rgba(59,130,246,0.18); color: var(--accent); }
+
+    .fn-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .fn-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .fn-sig { font-family: var(--mono); font-size: 0.96rem; font-weight: 700; color: #60a5fa; }
+    .fn-meta {
+      margin-top: 0.75rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--surface-2);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      font-size: 0.86rem;
+      color: var(--text);
+    }
+    .fn-alt {
+      margin-top: 0.65rem;
+      padding: 0.7rem 0.85rem;
+      background: rgba(16, 185, 129, 0.08);
+      border-left: 3px solid var(--success);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .fn-list {
+      margin-top: 0.65rem;
+      padding-left: 1.15rem;
+      font-size: 0.86rem;
+      color: var(--muted);
+      display: grid;
+      gap: 0.35rem;
+    }
+    .fn-list strong { color: var(--text); }
+    .code-block {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.95rem 1rem;
+      margin-top: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.83rem;
+      color: #cbd5e1;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Modales */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .login-card h1 { font-size: 1.4rem; margin-bottom: 0.35rem; }
+    .login-card p { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .auth-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+
+    /* Navegacion interna (Dev y Admin) */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      padding: 0.85rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    main {
+      flex: 1;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Tarjetas y stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+    }
+    .stat-label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem; font-family: var(--mono); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .badge.ok { border-color: rgba(16,185,129,0.4); color: var(--success); background: rgba(16,185,129,0.1); }
+    .badge.warn { border-color: rgba(245,158,11,0.4); color: var(--warning); background: rgba(245,158,11,0.1); }
+    .badge.danger { border-color: rgba(239,68,68,0.4); color: var(--danger); background: rgba(239,68,68,0.1); }
+
+    /* Inputs y botones */
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      width: 100%;
+    }
+    textarea { font-family: var(--mono); font-size: 0.85rem; min-height: 140px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #232c40; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-sm { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    .row > .btn, .row > .auto { flex: 0 0 auto; width: auto; }
+
+    /* Tablas y Filas de Claves */
+    .key-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .key-info { display: flex; flex-direction: column; gap: 0.15rem; }
+    .key-title { font-weight: 600; font-size: 0.92rem; }
+    .key-code { font-family: var(--mono); font-size: 0.85rem; color: #60a5fa; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+    tr:last-child td { border-bottom: none; }
+    code { font-family: var(--mono); background: var(--bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82rem; }
+
+    /* Editor DB y World */
+    .editor-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 820px) { .editor-grid { grid-template-columns: 1fr; } }
+
+    .list-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 460px;
+      overflow-y: auto;
+    }
+    .list-item {
+      padding: 0.6rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+    }
+    .list-item:hover { background: var(--surface-2); }
+
+    /* Notificacion */
+    #toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 0.75rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR -->
+  <header class="topbar">
+    <div class="brand" onclick="switchView('home')">
+      <span class="dot"></span>
+      <span>ORBITA</span>
+    </div>
+    <div class="nav-links">
+      <button class="btn btn-secondary btn-sm" onclick="switchView('home')">Inicio</button>
+      <button class="btn btn-secondary btn-sm" onclick="switchView('docs', 'rapido')">Documentación</button>
+      <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-secondary btn-sm">Descargar Proyecto GameMaker (.zip)</a>
+      <button id="nav-dashboard-btn" class="btn btn-sm" onclick="openDashboard()">Dashboard</button>
+    </div>
+  </header>
+
+  <!-- VISTA 1: PORTADA PUBLICA (100% GRATUITA) -->
+  <div id="view-home" class="view active">
+    <section class="hero">
+      <h1>Motor multijugador 100% gratuito para <span style="color:var(--accent);">GameMaker</span></h1>
+      <p>Crea juegos multijugador en tiempo real con poco código. Registra tu cuenta gratuita, genera tu clave de servidor aislada y administra tus salas, base de datos y objetos persistentes.</p>
+      <div class="hero-actions">
+        <button class="btn" onclick="openDashboard()">Ir al Dashboard</button>
+        <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-secondary">Descargar Proyecto GameMaker (.zip)</a>
+      </div>
+    </section>
+
+    <main>
+      <div class="grid-3">
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Sistema basado en salas</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Comparte movimiento, sprites y eventos entre jugadores en tiempo real con pocas líneas de GML.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Clave aislada por proyecto</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Cada clave (<code>ORB_GAME_KEY</code> + <code>ORB_GAME_ID</code>) aísla tus salas, jugadores y datos para que nunca se mezclen con otros juegos.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:0.4rem;">Control Total en tu Dashboard</h3>
+          <p style="color:var(--muted); font-size:0.9rem;">Supervisa salas activas en vivo, gestiona tus colecciones de base de datos y edita objetos persistentes sin límites ni planes de pago.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISTA 2: DASHBOARD DEL DESARROLLADOR (CLAVES, SALAS, DB Y OBJETOS PERSISTENTES) -->
+  <div id="view-dev" class="view">
+    <nav>
+      <button class="tab-btn dev-tab-btn active" data-devtab="keys">Mis Claves de Servidor</button>
+      <button class="tab-btn dev-tab-btn" data-devtab="rooms">Salas Activas</button>
+      <button class="tab-btn dev-tab-btn" data-devtab="db">Base de Datos</button>
+      <button class="tab-btn dev-tab-btn" data-devtab="world">Objetos Persistentes</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem; padding:0.4rem 0;">
+        <span id="dev-user-subtitle" style="color:var(--muted); font-size:0.84rem;"></span>
+        <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-secondary btn-sm">Descargar .zip</a>
+        <button class="btn btn-danger btn-sm" onclick="logoutDev()">Cerrar Sesión</button>
+      </div>
+    </nav>
+
+    <main>
+      <!-- SUB-SECCION DEV 1: CLAVES -->
+      <section id="devtab-keys" class="section dev-section active">
+        <div class="card">
+          <div class="card-header">
+            <strong>Generar Nueva Clave de Servidor (Gratis)</strong>
+            <span class="badge ok">Aislamiento automático por Key + Game ID</span>
+          </div>
+          <div class="row">
+            <div>
+              <input type="text" id="dev-project-input" placeholder="Nombre de tu juego (ej. Mutagen Fighters)..." />
+            </div>
+            <button class="btn" onclick="createDevKey()">Generar Clave</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <strong>Tus Claves Registradas</strong>
+            <button class="btn btn-secondary btn-sm" onclick="loadDevKeys()">Actualizar</button>
+          </div>
+          <div id="dev-keys-list-container">
+            <p style="color:var(--muted); text-align:center; padding:1.5rem;">Cargando claves...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUB-SECCION DEV 2: SALAS ACTIVAS DE SUS JUEGOS -->
+      <section id="devtab-rooms" class="section dev-section">
+        <div class="card">
+          <div class="card-header">
+            <strong>Salas Activas en tus Juegos</strong>
+            <button class="btn btn-secondary btn-sm" onclick="loadDevOverview()">Actualizar en Vivo</button>
+          </div>
+          <div id="dev-live-rooms-container">
+            <p style="color:var(--muted); text-align:center; padding:1.5rem;">Cargando salas activas...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUB-SECCION DEV 3: BASE DE DATOS DE SUS JUEGOS -->
+      <section id="devtab-db" class="section dev-section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Selecciona tu Juego (Identificador interno)</label>
+              <select id="dev-db-game-select" onchange="loadDevDbCollections()"></select>
+            </div>
+            <div style="flex:0 0 auto; align-self:flex-end;">
+              <button class="btn btn-secondary" onclick="loadDevOverview()">Refrescar Juegos</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Colecciones y Claves</strong>
+              <button class="btn btn-sm" onclick="prepareNewDevDbRecord()">+ Nuevo</button>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+              <select id="dev-db-col-select" onchange="loadDevDbKeys()"></select>
+            </div>
+            <div class="list-box" id="dev-db-keys-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="dev-db-editor-title">Editor de Documento</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveDevDbRecord()">Guardar JSON</button>
+                <button class="btn btn-danger btn-sm" id="dev-db-delete-btn" onclick="deleteDevDbRecord()" style="display:none;">Eliminar</button>
+              </div>
+            </div>
+            <div class="row" style="margin-bottom:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Colección</label>
+                <input type="text" id="dev-db-edit-col" placeholder="ej. perfiles" />
+              </div>
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Clave (Key)</label>
+                <input type="text" id="dev-db-edit-key" placeholder="ej. jugador_1" />
+              </div>
+            </div>
+            <label style="font-size:0.8rem; color:var(--muted);">Valor (JSON válido)</label>
+            <textarea id="dev-db-edit-val" placeholder='{"monedas": 100, "nivel": 1}'></textarea>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUB-SECCION DEV 4: OBJETOS PERSISTENTES DE SUS SALAS -->
+      <section id="devtab-world" class="section dev-section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Selecciona tu Juego</label>
+              <select id="dev-world-game-select" onchange="loadDevWorldRooms()"></select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Sala Persistente</label>
+              <select id="dev-world-room-select" onchange="loadDevWorldObjects()"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Objetos Persistentes en Sala</strong>
+            </div>
+            <div class="list-box" id="dev-world-objs-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="dev-world-editor-title">Propiedades del Objeto</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveDevWorldObject()">Actualizar en Vivo</button>
+                <button class="btn btn-danger btn-sm" id="dev-world-delete-btn" onclick="deleteDevWorldObject()" style="display:none;">Destruir</button>
+              </div>
+            </div>
+            <input type="hidden" id="dev-world-edit-id" />
+            <label style="font-size:0.8rem; color:var(--muted);">Propiedades JSON</label>
+            <textarea id="dev-world-edit-val" placeholder='{"x": 200, "y": 350, "tipo": "cofre"}'></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- VISTA 3: DOCUMENTACION SDK COMPLETA -->
+  <div id="view-docs" class="view">
+    <main>
+      <div style="margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <h1 style="font-size:1.65rem; margin-bottom:0.25rem;">Documentación de Órbita (GML)</h1>
+          <p style="color:var(--muted); font-size:0.92rem;">Guía completa de funciones, parámetros, casos de uso alternativos y ejemplos listos para GameMaker.</p>
+        </div>
+        <a href="/sdk/Orbita_Proyecto_Base.zip" download class="btn btn-sm">Descargar Proyecto GameMaker (.zip)</a>
+      </div>
+
+      <div class="docs-layout">
+        <aside class="docs-sidebar">
+          <div style="margin-bottom:0.75rem;">
+            <input type="text" id="doc-search" placeholder="Buscar función o tema..." oninput="renderDocs()" />
+          </div>
+          <button class="doc-cat-btn active" data-cat="rapido" onclick="filterDocCat('rapido', this)">1. Primer juego (5 min)</button>
+          <button class="doc-cat-btn" data-cat="conexion" onclick="filterDocCat('conexion', this)">2. Conexión y Red</button>
+          <button class="doc-cat-btn" data-cat="salas" onclick="filterDocCat('salas', this)">3. Salas y Lobbies</button>
+          <button class="doc-cat-btn" data-cat="jugadores" onclick="filterDocCat('jugadores', this)">4. Jugadores y Eventos</button>
+          <button class="doc-cat-btn" data-cat="datos" onclick="filterDocCat('datos', this)">5. Datos y Mundo</button>
+          <button class="doc-cat-btn" data-cat="servidor" onclick="filterDocCat('servidor', this)">6. Servidor, IA y Discord</button>
+          <button class="doc-cat-btn" data-cat="all" onclick="filterDocCat('all', this)">Ver Todo</button>
+        </aside>
+
+        <div id="docs-content"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISTA 4: DASHBOARD ADMINISTRADOR GLOBAL (TÚ) -->
+  <div id="view-admin" class="view">
+    <nav>
+      <button class="tab-btn admin-tab-btn active" data-tab="live">Salas en Vivo Globales</button>
+      <button class="tab-btn admin-tab-btn" data-tab="keys">Claves Globales</button>
+      <button class="tab-btn admin-tab-btn" data-tab="db">Base de Datos (db.json)</button>
+      <button class="tab-btn admin-tab-btn" data-tab="world">Mundo Persistente (world.json)</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem; padding:0.4rem 0;">
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.84rem; color:var(--muted); cursor:pointer;">
+          <input type="checkbox" id="auto-refresh" checked style="width:auto;" />
+          Auto-actualizar (3s)
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="refreshAll()">Actualizar</button>
+        <button class="btn btn-danger btn-sm" onclick="logout()">Salir</button>
+      </div>
+    </nav>
+
+    <main>
+      <section id="tab-live" class="section admin-section active">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Jugadores Conectados</div>
+            <div class="stat-value" id="stat-players">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Salas Activas</div>
+            <div class="stat-value" id="stat-rooms">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Desarrolladores</div>
+            <div class="stat-value" id="stat-devs">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Uptime Servidor</div>
+            <div class="stat-value" id="stat-uptime">0s</div>
+          </div>
+        </div>
+
+        <div id="live-games-container"></div>
+      </section>
+
+      <section id="tab-keys" class="section admin-section">
+        <div class="card">
+          <div class="card-header">
+            <strong>Todas las Claves de Servidor Registradas</strong>
+            <button class="btn btn-secondary btn-sm" onclick="loadAdminKeys()">Refrescar</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Desarrollador</th>
+                  <th>Juego</th>
+                  <th>Clave de Servidor</th>
+                  <th>Conectados</th>
+                  <th>Estado</th>
+                  <th style="text-align:right;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="admin-keys-tbody">
+                <tr><td colspan="6" style="color:var(--muted); text-align:center;">Cargando claves...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-db" class="section admin-section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Juego (Scoped Game ID)</label>
+              <div class="row">
+                <select id="db-game-select" onchange="loadDbCollections()"></select>
+                <button class="btn btn-danger" onclick="deleteEntireGame()">Eliminar Juego</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">O escribir nuevo Game ID</label>
+              <div class="row">
+                <input type="text" id="db-new-game" placeholder="Ej. MutagenFighters" />
+                <button class="btn btn-secondary" onclick="selectCustomDbGame()">Abrir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Colecciones y Claves</strong>
+              <button class="btn btn-sm" onclick="prepareNewDbRecord()">+ Nuevo</button>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+              <select id="db-col-select" onchange="loadDbKeys()"></select>
+            </div>
+            <div class="list-box" id="db-keys-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="db-editor-title">Editor de Documento</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveDbRecord()">Guardar JSON</button>
+                <button class="btn btn-danger btn-sm" id="db-delete-btn" onclick="deleteDbRecord()" style="display:none;">Eliminar</button>
+              </div>
+            </div>
+            <div class="row" style="margin-bottom:0.75rem;">
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Colección</label>
+                <input type="text" id="db-edit-col" placeholder="ej. _perfiles" />
+              </div>
+              <div>
+                <label style="font-size:0.8rem; color:var(--muted);">Clave (Key)</label>
+                <input type="text" id="db-edit-key" placeholder="ej. jugador_1" />
+              </div>
+            </div>
+            <label style="font-size:0.8rem; color:var(--muted);">Valor (JSON válido)</label>
+            <textarea id="db-edit-val" placeholder='{"monedas": 100, "nivel": 1}'></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-world" class="section admin-section">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Juego (Scoped Game ID)</label>
+              <select id="world-game-select" onchange="loadWorldRooms()"></select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:var(--muted);">Sala Persistente</label>
+              <select id="world-room-select" onchange="loadWorldObjects()"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <div class="card">
+            <div class="card-header">
+              <strong>Objetos en Sala</strong>
+            </div>
+            <div class="list-box" id="world-objs-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <strong id="world-editor-title">Propiedades del Objeto</strong>
+              <div class="row auto">
+                <button class="btn btn-sm" onclick="saveWorldObject()">Actualizar en Vivo</button>
+                <button class="btn btn-danger btn-sm" id="world-delete-btn" onclick="deleteWorldObject()" style="display:none;">Destruir</button>
+              </div>
+            </div>
+            <input type="hidden" id="world-edit-id" />
+            <label style="font-size:0.8rem; color:var(--muted);">Propiedades JSON</label>
+            <textarea id="world-edit-val" placeholder='{"x": 200, "y": 350, "tipo": "cofre"}'></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL DASHBOARD (CUENTA DESARROLLADOR + ACCESO ADMIN DISCRETO) -->
+  <div id="dev-modal" class="modal-backdrop">
+    <div class="login-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <h1>Dashboard</h1>
+        <button class="btn btn-secondary btn-sm" onclick="closeDevModal()">X</button>
+      </div>
+      <p>Crea una cuenta gratuita o inicia sesión para administrar tus juegos.</p>
+
+      <div class="auth-tabs">
+        <button type="button" id="tab-auth-register" class="btn btn-sm" onclick="switchAuthMode('register')">Crear Cuenta</button>
+        <button type="button" id="tab-auth-login" class="btn btn-secondary btn-sm" onclick="switchAuthMode('login')">Iniciar Sesión</button>
+      </div>
+
+      <form id="dev-auth-form">
+        <div id="dev-name-group" style="margin-bottom:0.75rem;">
+          <input type="text" id="dev-name-input" placeholder="Nombre o estudio" required />
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <input type="email" id="dev-email-input" placeholder="Correo electrónico" required />
+        </div>
+        <div style="margin-bottom:1rem;">
+          <input type="password" id="dev-pass-input" placeholder="Contraseña (mínimo 6 caracteres)" required />
+        </div>
+        <button type="submit" id="dev-auth-submit" class="btn" style="width:100%;">Crear Cuenta y Entrar</button>
+      </form>
+      <p id="dev-auth-error" style="color: var(--danger); margin-top: 0.75rem; margin-bottom: 0; display: none;"></p>
+
+      <div style="margin-top:1.25rem; padding-top:0.85rem; border-top:1px solid var(--border); text-align:right;">
+        <button type="button" style="background:none; border:none; color:var(--muted); font-size:0.78rem; cursor:pointer;" onclick="openAdminFromDev()">Acceso Administrador</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL LOGIN ADMIN -->
+  <div id="login-modal" class="modal-backdrop">
+    <div class="login-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <h1>Administrador</h1>
+        <button class="btn btn-secondary btn-sm" onclick="closeLoginModal()">X</button>
+      </div>
+      <p>Ingresa tu <code>ADMIN_TOKEN</code> para administrar todo el servidor.</p>
+      <form id="login-form">
+        <div style="margin-bottom: 1rem;">
+          <input type="password" id="token-input" placeholder="Token de administrador" required />
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Entrar</button>
+      </form>
+      <p id="login-error" style="color: var(--danger); margin-top: 0.75rem; margin-bottom: 0; display: none;"></p>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const DOCS_DATA = [
+      // =========================================================================
+      // 1. PRIMER JUEGO (5 MIN)
+      // =========================================================================
+      {
+        cat: "rapido",
+        sig: "Paso 1: Configurar orb_config.gml con tu Clave de Servidor",
+        badge: "Primer juego",
+        desc: "Descarga el Proyecto Base de GameMaker (.zip), ábrelo en GameMaker Studio 2 y abre el script orb_config.gml. Ahí defines a qué servidor conectarte y pegas la clave única (ORB_GAME_KEY) que creaste en tu Dashboard.",
+        bullets: [
+          "<strong>ORB_HOST:</strong> Dirección IP o dominio del servidor (usa \"127.0.0.1\" para probar en tu propia computadora).",
+          "<strong>ORB_PORT:</strong> Puerto donde escucha Node.js (por defecto 3000 en local, o 443 si usas servidor público con SSL).",
+          "<strong>ORB_SECURE:</strong> Déjalo en false para pruebas locales (ws://) o cámbialo a true cuando subas tu servidor con HTTPS/WSS.",
+          "<strong>ORB_GAME_ID:</strong> Nombre interno de tu juego (ej. \"MutagenFighters\"). Junto con tu clave, aísla tus salas y bases de datos.",
+          "<strong>ORB_GAME_KEY:</strong> Tu clave UUID generada en el Dashboard.",
+          "<strong>ORB_PLAYER_OBJECT:</strong> El objeto de GameMaker que se creará automáticamente por cada jugador remoto que entre a tu sala.",
+          "<strong>ORB_SEND_RATE:</strong> Frecuencia de envío de paquetes por segundo (20 por defecto; súbelo a 30 o 60 para juegos de pelea o acción rápida)."
+        ],
+        meta: "Importante: Si cambias ORB_GAME_ID (por ejemplo de \"Demo\" a \"VersionFinal\"), tendrás un espacio limpio de salas y datos bajo la misma clave.",
+        alt: "Otras posibilidades: Puedes dejar ORB_PLAYER_OBJECT en noone si prefieres crear y dibujar manualmente los avatares remotos escuchando los eventos ORB_EV_PLAYER_JOINED y ORB_EV_PLAYER_LEFT.",
+        code: `// Dentro de scripts/orb_config/orb_config.gml
+#macro ORB_HOST          "127.0.0.1"
+#macro ORB_PORT          3000
+#macro ORB_SECURE        false
+#macro ORB_GAME_ID       "MiJuegoMultijugador"
+#macro ORB_GAME_KEY      "pega_aqui_tu_clave_uuid_del_dashboard"
+#macro ORB_PLAYER_OBJECT obj_otro_jugador
+#macro ORB_SEND_RATE     20`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 2: Objeto Controlador de Red (obj_control)",
+        badge: "Primer juego",
+        desc: "Coloca un objeto persistente (obj_control) en la primera room de tu juego. Este objeto abre la conexión con el servidor, espera la confirmación (handshake) y entra a una sala de juego.",
+        bullets: [
+          "<strong>orb_connect():</strong> Inicia la conexión asíncrona WebSocket.",
+          "<strong>ORB_EV_CONNECTED:</strong> Evento disparado cuando el servidor valida ORB_GAME_KEY y asigna tu ID único.",
+          "<strong>orb_join_room(nombre, max, callback):</strong> Crea la sala si aún no existe o te mete dentro si ya está abierta."
+        ],
+        meta: "Eventos necesarios en obj_control: Create (para conectar y registrar listeners) y Draw GUI (opcional para mostrar el monitor de ping y estado).",
+        alt: "Otras posibilidades: En lugar de entrar directo a una sala fija al conectar, puedes llevar al jugador a un menú principal y usar orb_list_rooms() para mostrar salas disponibles o orb_matchmake() para emparejar jugadores automáticamente.",
+        code: `// --- EVENTO CREATE de obj_control ---
+orb_connect();
+
+// Cuando el servidor valida nuestra clave y nos da la bienvenida:
+orb_on(ORB_EV_CONNECTED, function(_data, _from) {
+    show_debug_message("¡Conectado a Órbita! Mi ID es: " + string(_data.my_id));
+    
+    // Entrar o crear la sala "arena_1" con capacidad para 8 jugadores
+    orb_join_room("arena_1", 8, function(_ok, _res) {
+        if (_ok) {
+            // Ya estamos dentro de la sala: instanciamos a nuestro personaje local
+            instance_create_layer(250, 250, "Instances", obj_jugador);
+        } else {
+            show_debug_message("Error al entrar a la sala: " + string(_res));
+        }
+    });
+});
+
+// --- EVENTO DRAW GUI de obj_control ---
+orb_debug_draw(16, 16);`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 3: Tu Jugador Local (obj_jugador) y Sincronización",
+        badge: "Primer juego",
+        desc: "Programa el movimiento, animaciones y controles de tu personaje como en cualquier juego normal. Al final del evento Step, asigna global.orb_state = orb_state_from(id) para que Órbita envíe solo los cambios al servidor.",
+        bullets: [
+          "<strong>orb_state_from(id):</strong> Lee automáticamente x, y, sprite_index, image_index, image_xscale, image_yscale, image_angle e image_blend de la instancia.",
+          "<strong>Optimización delta:</strong> Órbita compara el estado actual con el anterior y solo envía paquetes si algo realmente cambió, ahorrando ancho de banda."
+        ],
+        meta: "Variables personalizadas: Puedes añadir cualquier campo extra a global.orb_state (como hp, nombre, estado, arma) y llegará automáticamente a las instancias de los demás jugadores.",
+        alt: "Otras posibilidades: Si tienes un juego por turnos o de cartas donde no necesitas sincronizar posición continua cada frame, puedes omitir global.orb_state y comunicarte únicamente mediante orb_send_room().",
+        code: `// --- EVENTO CREATE de obj_jugador ---
+velocidad = 4;
+hp = 100;
+nick = "Jugador_" + string(orb_id());
+
+// --- EVENTO STEP de obj_jugador ---
+var _h = keyboard_check(vk_right) - keyboard_check(vk_left);
+var _v = keyboard_check(vk_down) - keyboard_check(vk_up);
+
+x += _h * velocidad;
+y += _v * velocidad;
+if (_h != 0) image_xscale = sign(_h);
+
+// Empaquetar estado visual automático + variables propias del juego
+global.orb_state = orb_state_from(id);
+global.orb_state.hp = hp;
+global.orb_state.nick = nick;`
+      },
+      {
+        cat: "rapido",
+        sig: "Paso 4: Los Jugadores Remotos (obj_otro_jugador)",
+        badge: "Primer juego",
+        desc: "No tienes que programar lógica para crear ni destruir instancias cuando otros jugadores entran o salen. Órbita instancia automáticamente ORB_PLAYER_OBJECT por cada compañero en la sala y actualiza sus variables en tiempo real.",
+        bullets: [
+          "<strong>orb_player_id:</strong> Variable creada automáticamente dentro de cada instancia remota con su ID de red.",
+          "<strong>orb_player_slot:</strong> Índice de puesto (0, 1, 2...) que ocupa ese jugador dentro de la sala.",
+          "<strong>Interpolación suave:</strong> Órbita suaviza el movimiento entre paquetes para evitar saltos bruscos."
+        ],
+        meta: "Consejo: Inicializa en el evento Create de obj_otro_jugador las variables personalizadas (como hp = 100 o nick = \"...\") para evitar errores en el primer frame antes de recibir su primer paquete.",
+        alt: "Otras posibilidades: Puedes cambiar el aspecto o color del jugador remoto leyendo orb_player_slot (por ejemplo, slot 0 equipo azul, slot 1 equipo rojo).",
+        code: `// --- EVENTO CREATE de obj_otro_jugador ---
+hp = 100;
+nick = "Conectando...";
+
+// --- EVENTO DRAW de obj_otro_jugador ---
+draw_self();
+draw_set_halign(fa_center);
+draw_set_color(c_white);
+draw_text(x, y - 48, string(nick) + " [#" + string(orb_player_id) + "]");
+draw_text(x, y - 32, "HP: " + string(hp));`
+      },
+
+      // =========================================================================
+      // 2. CONEXIÓN Y RED
+      // =========================================================================
+      {
+        cat: "conexion",
+        sig: "orb_connect() / orb_disconnect()",
+        badge: "Conexión",
+        desc: "Abre o cierra manualmente la conexión WebSocket con el servidor usando los valores de orb_config.gml.",
+        bullets: [
+          "<strong>orb_connect():</strong> Inicia la conexión. Si ya existe una conexión abierta o en curso, ignora llamadas duplicadas.",
+          "<strong>orb_disconnect():</strong> Abandona la sala actual de forma limpia, envía señal de despedida y cierra el socket."
+        ],
+        alt: "Otras posibilidades: Puedes llamar a orb_disconnect() al volver al menú principal para liberar el cupo en el servidor y volver a llamar a orb_connect() cuando el jugador pulse 'Jugar Online'.",
+        code: `// Conectar al servidor
+orb_connect();
+
+// Escuchar desconexión inesperada (ej. pérdida de internet)
+orb_on(ORB_EV_DISCONNECTED, function(_data, _from) {
+    show_debug_message("Se perdió la conexión con el servidor.");
+});
+
+// Desconectar manualmente
+orb_disconnect();`
+      },
+      {
+        cat: "conexion",
+        sig: "orb_is_connected() / orb_id() / orb_ping() / orb_server_time()",
+        badge: "Estado de Red",
+        desc: "Funciones de consulta rápida sobre el estado de tu sesión y sincronización de reloj con el servidor.",
+        bullets: [
+          "<strong>orb_is_connected():</strong> Devuelve true cuando el handshake terminó y ya puedes entrar a salas o usar la base de datos.",
+          "<strong>orb_id():</strong> Devuelve tu ID numérico único en esta sesión (o -1 si no estás conectado).",
+          "<strong>orb_ping():</strong> Devuelve la latencia actual ida y vuelta en milisegundos (ms).",
+          "<strong>orb_server_time():</strong> Devuelve el reloj global del servidor en milisegundos (Unix timestamp sincronizado)."
+        ],
+        alt: "Otras posibilidades: Usa orb_server_time() para sincronizar cuentas regresivas de inicio de ronda o eventos temporales exactamente al mismo milisegundo en todos los clientes.",
+        code: `if (orb_is_connected()) {
+    var _mi_id = orb_id();
+    var _ping = orb_ping();
+    var _hora_servidor = orb_server_time();
+    show_debug_message("ID: " + string(_mi_id) + " | Ping: " + string(_ping) + "ms");
+}`
+      },
+      {
+        cat: "conexion",
+        sig: "orb_debug_draw(_x, _y)",
+        badge: "Diagnóstico",
+        desc: "Dibuja en pantalla un panel compacto con estado de red, ping, nombre de sala actual, puesto (slot), rol de Host y cantidad de jugadores.",
+        code: `// En el evento Draw GUI de tu objeto controlador
+orb_debug_draw(16, 16);`
+      },
+
+      // =========================================================================
+      // 3. SALAS Y LOBBIES
+      // =========================================================================
+      {
+        cat: "salas",
+        sig: "orb_join_room(_nombre, _max_jugadores, [_callback]) / orb_leave_room([_callback])",
+        badge: "Salas",
+        desc: "Une al jugador a una sala identificada por su nombre. Si la sala no existe, el servidor la crea automáticamente y nombra al creador como Host. Si _max_jugadores es 0, no tiene límite.",
+        bullets: [
+          "<strong>_nombre:</strong> String con el nombre de la sala (ej. \"lobby_1\" o \"sala_privada_XYZ\").",
+          "<strong>_max_jugadores:</strong> Cupo máximo permitido (hasta 64). Si está llena, el callback recibe _ok = false y _res = \"room_full\".",
+          "<strong>_callback:</strong> Función opcional function(_ok, _res) que se ejecuta al confirmar la entrada.",
+          "<strong>orb_leave_room([_cb]):</strong> Sale de la sala actual y destruye localmente las instancias de otros jugadores."
+        ],
+        alt: "Otras posibilidades: Para salas privadas con amigos, genera un código aleatorio de 4 letras (ej. \"K9XP\") y úsalo como nombre de sala en orb_join_room(\"K9XP\", 4).",
+        code: `orb_join_room("torneo_1", 2, function(_ok, _res) {
+    if (_ok) {
+        show_debug_message("Entraste a la sala: " + string(_res));
+        if (orb_is_host()) {
+            show_debug_message("Eres el anfitrión (Host) de esta sala.");
+        }
+    } else {
+        show_debug_message("No se pudo entrar: " + string(_res)); // ej. "room_full"
+    }
+});`
+      },
+      {
+        cat: "salas",
+        sig: "orb_matchmake(_cantidad, [_modo], [_callback]) / orb_cancel_matchmake()",
+        badge: "Emparejamiento",
+        desc: "Coloca al jugador en una cola de emparejamiento automático. En cuanto se reúnen _cantidad jugadores buscando en el mismo _modo, el servidor crea una sala privada y los mete juntos automáticamente.",
+        bullets: [
+          "<strong>_cantidad:</strong> Número exacto de jugadores para iniciar partida (ej. 2 para 1v1, 4 para 2v2).",
+          "<strong>_modo:</strong> Etiqueta del modo de juego (ej. \"ranked\", \"casual\", \"supervivencia\").",
+          "<strong>ORB_EV_QUEUE:</strong> Evento que notifica cuántos jugadores llevan esperando en la cola.",
+          "<strong>orb_cancel_matchmake():</strong> Saca al jugador de la cola de búsqueda."
+        ],
+        alt: "Otras posibilidades: Puedes tener múltiples colas simultáneas separadas por modo (ej. orb_matchmake(2, \"1v1\") y orb_matchmake(6, \"battle_royale\")) sin que se mezclen.",
+        code: `// Buscar partida 1v1 en modo "ranked"
+orb_matchmake(2, "ranked");
+
+// Mostrar progreso en pantalla mientras busca rivales
+orb_on(ORB_EV_QUEUE, function(_data, _from) {
+    show_debug_message("Buscando rivales: " + string(_data.count) + "/" + string(_data.size));
+});
+
+// Cancelar búsqueda si el jugador presiona Escape
+if (keyboard_check_pressed(vk_escape)) {
+    orb_cancel_matchmake();
+}`
+      },
+      {
+        cat: "salas",
+        sig: "orb_list_rooms(_callback) / orb_room() / orb_slot() / orb_is_host() / orb_host_id() / orb_kick(_id)",
+        badge: "Lobby y Autoridad",
+        desc: "Herramientas para construir un navegador de salas públicas y gestionar la autoridad del anfitrión (Host) dentro de una partida.",
+        bullets: [
+          "<strong>orb_list_rooms(_cb):</strong> Devuelve un arreglo de structs [{ id, players, max }, ...] con las salas abiertas en tu juego.",
+          "<strong>orb_room():</strong> Devuelve el nombre de la sala en la que estás actualmente (o \"\" si estás fuera).",
+          "<strong>orb_slot():</strong> Devuelve tu número de puesto asignado (0 para Jugador 1, 1 para Jugador 2, etc.).",
+          "<strong>orb_is_host() / orb_host_id():</strong> Indica si eres el anfitrión de la sala. Si el Host se desconecta, el servidor promueve automáticamente al siguiente jugador.",
+          "<strong>orb_kick(_player_id):</strong> Si eres el Host, expulsa a un jugador de la sala."
+        ],
+        alt: "Otras posibilidades: Usa orb_slot() para asignar automáticamente la posición inicial (spawn) y el color de cada jugador (ej. slot 0 a la izquierda, slot 1 a la derecha).",
+        code: `// Listar salas abiertas para un menú de servidores
+orb_list_rooms(function(_ok, _salas) {
+    if (_ok) {
+        for (var i = 0; i < array_length(_salas); i++) {
+            var _s = _salas[i];
+            show_debug_message(_s.id + " (" + string(_s.players) + "/" + string(_s.max) + ")");
+        }
+    }
+});
+
+// Si soy el Host, iniciar la partida para todos
+if (orb_is_host() && keyboard_check_pressed(vk_enter)) {
+    orb_send_all("iniciar_ronda", { mapa: "laboratorio" });
+}`
+      },
+
+      // =========================================================================
+      // 4. JUGADORES Y EVENTOS
+      // =========================================================================
+      {
+        cat: "jugadores",
+        sig: "orb_send_room(_evento, _datos) / orb_send_all(_evento, _datos) / orb_send_to(_id, _evento, _datos)",
+        badge: "Mensajería Instantánea",
+        desc: "Envía eventos personalizados en tiempo real (disparos, golpes, emotes, chat, inicio de ronda) en formato struct de GML.",
+        bullets: [
+          "<strong>orb_send_room(_ev, _datos):</strong> Envía el mensaje a todos los demás jugadores en tu sala (excluyéndote a ti).",
+          "<strong>orb_send_all(_ev, _datos):</strong> Envía el mensaje a todos en la sala incluyéndote a ti mismo (ideal para que el Host sincronice el inicio de ronda).",
+          "<strong>orb_send_to(_id, _ev, _datos):</strong> Envía un mensaje privado únicamente al jugador con ID _id."
+        ],
+        alt: "Otras posibilidades: Úsalo para implementar un chat de texto rápido, intercambio de ítems entre dos jugadores con orb_send_to(), o sincronizar proyectiles sin crear entidades pesadas.",
+        code: `// Avisar a los demás en la sala que disparamos un proyectil
+orb_send_room("disparo", {
+    x: x,
+    y: y,
+    dir: point_direction(x, y, mouse_x, mouse_y),
+    tipo: "plasma"
+});
+
+// Enviar un mensaje privado solo al jugador #4
+orb_send_to(4, "susurro", { texto: "¡Buena jugada!" });`
+      },
+      {
+        cat: "jugadores",
+        sig: "orb_on(_evento, _funcion) / orb_off(_evento)",
+        badge: "Listeners de Eventos",
+        desc: "Registra funciones callback para reaccionar tanto a eventos personalizados enviados por otros jugadores como a los eventos internos del sistema Órbita.",
+        bullets: [
+          "<strong>ORB_EV_CONNECTED:</strong> Conectado al servidor ({ my_id, server_time }).",
+          "<strong>ORB_EV_DISCONNECTED:</strong> Desconectado del servidor.",
+          "<strong>ORB_EV_PLAYER_JOINED:</strong> Entró un jugador nuevo a la sala ({ id, slot, instance }).",
+          "<strong>ORB_EV_PLAYER_LEFT:</strong> Salió un jugador de la sala ({ id }).",
+          "<strong>ORB_EV_HOST_CHANGED:</strong> Cambió el anfitrión de la sala ({ host_id })."
+        ],
+        meta: "Importante: Llama a orb_off(\"nombre_evento\") en el evento Clean Up de tus objetos si registraste listeners temporales dentro de una room.",
+        code: `// Escuchar disparos enviados por otros jugadores
+orb_on("disparo", function(_datos, _from_id) {
+    var _bala = instance_create_layer(_datos.x, _datos.y, "Instances", obj_bala);
+    _bala.direction = _datos.dir;
+    _bala.dueno = _from_id;
+});
+
+// Reaccionar cuando entra alguien nuevo a la sala
+orb_on(ORB_EV_PLAYER_JOINED, function(_info, _from) {
+    show_debug_message("¡Entró el jugador #" + string(_info.id) + " en el puesto " + string(_info.slot) + "!");
+});`
+      },
+      {
+        cat: "jugadores",
+        sig: "Entidades Extra: orb_entity_set(_key, _struct) / orb_entity_delete(_key)",
+        badge: "Sub-entidades",
+        desc: "Permite que un mismo jugador sincronice múltiples objetos propios adicionales (como una mascota, un dron, una torreta o un escudo) asociados a su conexión sin crear otro cliente.",
+        bullets: [
+          "<strong>orb_entity_set(_key, _struct):</strong> Crea o actualiza una sub-entidad identificada por texto (ej. \"dron_1\").",
+          "<strong>orb_entity_delete(_key):</strong> Elimina la sub-entidad y notifica a los demás jugadores para que la destruyan."
+        ],
+        code: `// Sincronizar una mascota que sigue al jugador
+orb_entity_set("mascota", {
+    x: obj_mascota.x,
+    y: obj_mascota.y,
+    spr: obj_mascota.sprite_index
+});
+
+// Eliminar la mascota cuando desaparece
+orb_entity_delete("mascota");`
+      },
+
+      // =========================================================================
+      // 5. DATOS Y MUNDO
+      // =========================================================================
+      {
+        cat: "datos",
+        sig: "orb_db_set(_col, _key, _valor, [_cb]) / orb_db_get(_col, _key, _cb)",
+        badge: "Base de Datos Persistente",
+        desc: "Guarda y lee datos permanentes en el servidor (perfiles, monedas, desbloqueos, récords, inventarios). Los datos quedan aislados exclusivamente bajo tu clave de proyecto y puedes inspeccionarlos o editarlos en vivo desde tu Dashboard.",
+        bullets: [
+          "<strong>_col:</strong> Nombre de la colección o tabla (ej. \"perfiles\", \"rankings\").",
+          "<strong>_key:</strong> Identificador único del registro (ej. \"usuario_ryan\").",
+          "<strong>_valor:</strong> Cualquier struct, arreglo, número o string válido.",
+          "<strong>_cb:</strong> Callback function(_ok, _datos) que recibe el resultado desde el servidor."
+        ],
+        meta: "Seguridad: Las colecciones que comienzan con guion bajo (_) o 'priv_' están protegidas contra escritura directa desde el cliente y solo pueden modificarse desde tu Dashboard o desde un módulo de servidor.",
+        alt: "Otras posibilidades: Úsalo para guardar configuraciones de controles en la nube, mazos de cartas personalizados o tablas de clasificación globales.",
+        code: `// Guardar progreso del jugador en la nube
+orb_db_set("perfiles", "ryan_01", {
+    nivel: 12,
+    monedas: 450,
+    personaje_fav: "Lex"
+}, function(_ok, _res) {
+    if (_ok) show_debug_message("Progreso guardado correctamente");
+});
+
+// Cargar progreso al abrir el juego
+orb_db_get("perfiles", "ryan_01", function(_ok, _datos) {
+    if (_ok) {
+        global.monedas = _datos.monedas;
+        global.nivel = _datos.nivel;
+    } else {
+        // El jugador es nuevo: creamos su perfil inicial
+        global.monedas = 0;
+        global.nivel = 1;
+    }
+});`
+      },
+      {
+        cat: "datos",
+        sig: "orb_db_merge(_col, _key, _struct, [_cb]) / orb_db_delete(_col, _key, [_cb]) / orb_db_list(_col, _cb)",
+        badge: "Operaciones Avanzadas DB",
+        desc: "Actualiza parcialmente campos específicos de un registro sin sobrescribir el resto, borra registros o lista todas las claves existentes dentro de una colección.",
+        bullets: [
+          "<strong>orb_db_merge:</strong> Combina las nuevas propiedades con las existentes en el servidor (ej. actualizar solo las monedas sin tocar el inventario).",
+          "<strong>orb_db_delete:</strong> Elimina permanentemente un registro.",
+          "<strong>orb_db_list:</strong> Devuelve un arreglo de strings con todas las claves guardadas en esa colección."
+        ],
+        code: `// Actualizar únicamente las monedas sin borrar el nivel ni el nombre
+orb_db_merge("perfiles", "ryan_01", { monedas: 500 });
+
+// Listar todos los jugadores registrados en "perfiles"
+orb_db_list("perfiles", function(_ok, _lista_claves) {
+    if (_ok) show_debug_message("Jugadores registrados: " + string(array_length(_lista_claves)));
+});`
+      },
+      {
+        cat: "datos",
+        sig: "orb_world_create(_props, [_cb]) / orb_world_edit(_id, _props) / orb_world_delete(_id)",
+        badge: "Objetos Persistentes del Mundo",
+        desc: "Crea objetos dentro de una sala que permanecen guardados en el servidor incluso cuando todos los jugadores se desconectan (ideal para construcciones, cofres, cultivos o puertas abiertas). También puedes editarlos o destruirlos en vivo desde tu Dashboard.",
+        bullets: [
+          "<strong>orb_world_create(_props, [_cb]):</strong> Crea un objeto persistente en la sala actual y devuelve su ID numérico único.",
+          "<strong>orb_world_edit(_id, _props):</strong> Actualiza las propiedades del objeto y las sincroniza al instante con todos en la sala.",
+          "<strong>orb_world_delete(_id):</strong> Destruye el objeto persistente del servidor y avisa a todos los clientes.",
+          "<strong>ORB_EV_WORLD:</strong> Se dispara automáticamente al entrar a una sala por cada objeto persistente guardado en ella."
+        ],
+        alt: "Otras posibilidades: Úsalo para crear mundos sandbox persistentes donde los jugadores construyen bases o dejan notas que otros jugadores encontrarán horas después.",
+        code: `// Crear una construcción persistente en la sala actual
+orb_world_create({
+    tipo: "muro_piedra",
+    x: 400,
+    y: 320,
+    hp: 250
+}, function(_ok, _world_id) {
+    if (_ok) show_debug_message("Objeto persistente creado con ID: " + string(_world_id));
+});
+
+// Reconstruir los objetos persistentes al entrar a la sala
+orb_on(ORB_EV_WORLD, function(_obj, _from) {
+    // _obj.id es el ID del objeto y _obj.p contiene sus propiedades
+    var _inst = instance_create_layer(_obj.p.x, _obj.p.y, "Instances", obj_construccion);
+    _inst.world_id = _obj.id;
+    _inst.hp = _obj.p.hp;
+});`
+      },
+
+      // =========================================================================
+      // 6. SERVIDOR, IA Y DISCORD
+      // =========================================================================
+      {
+        cat: "servidor",
+        sig: "orb_server_event(_nombre, _datos) / orb_server_request(_nombre, _datos, _cb)",
+        badge: "Lógica Autoritativa",
+        desc: "Envía eventos o peticiones con respuesta directamente a tu módulo personalizado en el servidor (games/<tu_juego>.js) para validar compras, calcular daño del lado del servidor o ejecutar lógica anti-trampas.",
+        bullets: [
+          "<strong>orb_server_event:</strong> Envía un evento unidireccional al servidor.",
+          "<strong>orb_server_request:</strong> Envía una petición y espera la respuesta del servidor en el callback function(_ok, _respuesta)."
+        ],
+        code: `// Pedir al servidor que valide la compra de un ítem usando datos protegidos
+orb_server_request("comprar_item", { item_id: "espada_fuego" }, function(_ok, _respuesta) {
+    if (_ok) {
+        show_debug_message("Compra aprobada: " + string(_respuesta));
+    } else {
+        show_debug_message("Compra rechazada: " + string(_respuesta));
+    }
+});`
+      },
+      {
+        cat: "servidor",
+        sig: "orb_ai(_mensajes, _temperatura, _cb) / orb_discord_send(_canal_id, _texto, [_cb])",
+        badge: "Integraciones Avanzadas",
+        desc: "Permite que tu juego consulte modelos de Inteligencia Artificial (NPCs dinámicos, narradores) o envíe y reciba mensajes de un servidor de Discord en tiempo real si el administrador configuró las credenciales en el servidor.",
+        bullets: [
+          "<strong>orb_ai:</strong> Envía un historial de mensajes [{ role: \"user\", content: \"...\" }] y recibe la respuesta de texto en el callback.",
+          "<strong>orb_discord_send / ORB_EV_DISCORD:</strong> Envía anuncios de partidas a un canal de Discord y recibe mensajes del chat en el juego."
+        ],
+        code: `// Hablar con un NPC impulsado por IA
+var _msgs = [
+    { role: "system", content: "Eres un herrero medieval en un juego RPG." },
+    { role: "user", content: "¿Qué espada me recomiendas?" }
+];
+orb_ai(_msgs, 0.7, function(_ok, _respuesta) {
+    if (_ok) show_debug_message("Herrero: " + string(_respuesta));
+});`
+      },
+      {
+        cat: "servidor",
+        sig: "Diagnóstico de Errores (ORB_EV_ERROR)",
+        badge: "Solución de Problemas",
+        desc: "Escucha el evento ORB_EV_ERROR para capturar y mostrar cualquier rechazo o error de red durante el desarrollo.",
+        bullets: [
+          "<strong>bad_key:</strong> La clave ORB_GAME_KEY no coincide con ninguna clave activa en tu Dashboard o fue eliminada.",
+          "<strong>bad_protocol:</strong> La versión del SDK en GameMaker no coincide con la versión del servidor.",
+          "<strong>room_full:</strong> Intentaste entrar a una sala que ya alcanzó su límite máximo de jugadores.",
+          "<strong>rate_limited:</strong> El cliente envió demasiados mensajes por segundo (revisa ORB_SEND_RATE)."
+        ],
+        code: `orb_on(ORB_EV_ERROR, function(_err, _from) {
+    show_debug_message("Error de Órbita [" + string(_err.code) + "]: " + string(_err.msg));
+});`
+      }
+    ];
+
+    let activeDocCat = "rapido";
+    function filterDocCat(cat, btn) {
+      activeDocCat = cat;
+      document.querySelectorAll(".doc-cat-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      renderDocs();
+    }
+
+    function renderDocs() {
+      const q = (document.getElementById("doc-search").value || "").toLowerCase();
+      const filtered = DOCS_DATA.filter(item => {
+        const matchCat = q ? true : (activeDocCat === "all" || item.cat === activeDocCat);
+        const matchBullets = item.bullets && item.bullets.some(b => b.toLowerCase().includes(q));
+        const matchMeta = item.meta && item.meta.toLowerCase().includes(q);
+        const matchAlt = item.alt && item.alt.toLowerCase().includes(q);
+        const matchText = !q || item.sig.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q) || item.code.toLowerCase().includes(q) || matchBullets || matchMeta || matchAlt;
+        return matchCat && matchText;
+      });
+
+      const container = document.getElementById("docs-content");
+      if (!filtered.length) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">No se encontraron resultados.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map((item, idx) => `
+        <div class="fn-card">
+          <div class="fn-header">
+            <span class="fn-sig">${escapeHtml(item.sig)}</span>
+            <span class="badge">${escapeHtml(item.badge)}</span>
+          </div>
+          <p style="color:var(--muted); font-size:0.9rem;">${escapeHtml(item.desc)}</p>
+          ${item.bullets ? `<ul class="fn-list">${item.bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+          ${item.meta ? `<div class="fn-meta">${escapeHtml(item.meta)}</div>` : ""}
+          ${item.alt ? `<div class="fn-alt">${escapeHtml(item.alt)}</div>` : ""}
+          <div class="code-block"><button class="copy-btn" onclick="copyCode(${idx})">Copiar</button><span id="code-snippet-${idx}">${escapeHtml(item.code)}</span></div>
+        </div>
+      `).join("");
+    }
+
+    function copyCode(idx) {
+      const txt = document.getElementById("code-snippet-" + idx).textContent;
+      navigator.clipboard.writeText(txt).then(() => toast("Código copiado"));
+    }
+
+    // Tokens y estado
+    let ADMIN_TOKEN = localStorage.getItem("orbita_admin_token") || "";
+    let DEV_TOKEN = localStorage.getItem("orbita_dev_token") || "";
+    let authMode = "register";
+    let currentDbData = {};
+    let currentWorldData = {};
+    let devCurrentDbData = {};
+    let devCurrentWorldData = {};
+
+    function switchView(viewName, subTarget) {
+      document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+      document.getElementById("view-" + viewName).classList.add("active");
+
+      if (viewName === "docs") {
+        if (subTarget) {
+          const btn = document.querySelector(`.doc-cat-btn[data-cat="${subTarget}"]`);
+          filterDocCat(subTarget, btn);
+        } else {
+          renderDocs();
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // DASHBOARD UNIFICADO (DESARROLLADOR O ADMIN)
+    // ------------------------------------------------------------------
+    function openDashboard() {
+      if (ADMIN_TOKEN) {
+        loadOverview().then(() => switchView("admin")).catch(() => {
+          ADMIN_TOKEN = "";
+          localStorage.removeItem("orbita_admin_token");
+          document.getElementById("dev-modal").classList.add("open");
+        });
+        return;
+      }
+      if (DEV_TOKEN) {
+        Promise.all([loadDevKeys(), loadDevOverview()]).then(() => switchView("dev")).catch(() => {
+          DEV_TOKEN = "";
+          localStorage.removeItem("orbita_dev_token");
+          document.getElementById("dev-modal").classList.add("open");
+        });
+        return;
+      }
+      document.getElementById("dev-modal").classList.add("open");
+    }
+
+    function openAdminFromDev() {
+      closeDevModal();
+      document.getElementById("login-modal").classList.add("open");
+    }
+
+    function closeDevModal() {
+      document.getElementById("dev-modal").classList.remove("open");
+    }
+
+    function switchAuthMode(mode) {
+      authMode = mode;
+      const isReg = mode === "register";
+      document.getElementById("dev-name-group").style.display = isReg ? "block" : "none";
+      document.getElementById("dev-name-input").required = isReg;
+      document.getElementById("dev-auth-submit").textContent = isReg ? "Crear Cuenta y Entrar" : "Iniciar Sesión";
+      document.getElementById("tab-auth-register").className = isReg ? "btn btn-sm" : "btn btn-secondary btn-sm";
+      document.getElementById("tab-auth-login").className = !isReg ? "btn btn-sm" : "btn btn-secondary btn-sm";
+      document.getElementById("dev-auth-error").style.display = "none";
+    }
+
+    document.getElementById("dev-auth-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("dev-name-input").value.trim();
+      const email = document.getElementById("dev-email-input").value.trim();
+      const password = document.getElementById("dev-pass-input").value;
+      const errEl = document.getElementById("dev-auth-error");
+      errEl.style.display = "none";
+
+      try {
+        const endpoint = authMode === "register" ? "/api/dev/register" : "/api/dev/login";
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Error de autenticación");
+
+        DEV_TOKEN = data.token;
+        localStorage.setItem("orbita_dev_token", DEV_TOKEN);
+        closeDevModal();
+        await Promise.all([loadDevKeys(), loadDevOverview()]);
+        switchView("dev");
+        toast(`Bienvenido ${data.user.name}`);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    function logoutDev() {
+      DEV_TOKEN = "";
+      localStorage.removeItem("orbita_dev_token");
+      switchView("home");
+    }
+
+    // Pestañas dentro del Dashboard del Desarrollador
+    document.querySelectorAll(".dev-tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".dev-tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".dev-section").forEach(s => s.classList.remove("active"));
+        btn.classList.add("active");
+        const tab = btn.dataset.devtab;
+        document.getElementById("devtab-" + tab).classList.add("active");
+        if (tab === "keys") loadDevKeys();
+        if (tab === "rooms") loadDevOverview();
+        if (tab === "db") loadDevOverview().then(() => loadDevDbCollections());
+        if (tab === "world") loadDevOverview().then(() => loadDevWorldRooms());
+      });
+    });
+
+    async function devApi(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + DEV_TOKEN,
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Error HTTP " + res.status);
+      return data;
+    }
+
+    async function loadDevKeys() {
+      const data = await devApi("/api/dev/keys");
+      document.getElementById("dev-user-subtitle").textContent = `${data.user.name} (${data.user.email})`;
+      const container = document.getElementById("dev-keys-list-container");
+      const list = data.keys || [];
+      if (!list.length) {
+        container.innerHTML = `<p style="color:var(--muted); text-align:center; padding:1.5rem;">Aún no tienes claves de servidor. Genera una arriba para tu proyecto.</p>`;
+        return;
+      }
+      container.innerHTML = list.map(k => `
+        <div class="key-row">
+          <div class="key-info">
+            <span class="key-title">${escapeHtml(k.projectName)} <span class="badge ok" style="margin-left:0.4rem;">${k.onlineNow} conectados</span></span>
+            <span class="key-code">ORB_GAME_KEY: ${escapeHtml(k.uuid)}</span>
+          </div>
+          <div class="row auto" style="gap:0.5rem;">
+            <button class="btn btn-secondary btn-sm" onclick="copyText('${escapeHtml(k.uuid)}')">Copiar Clave</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteDevKey('${escapeHtml(k.uuid)}', '${escapeHtml(k.projectName)}')">Eliminar</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function createDevKey() {
+      const projectName = document.getElementById("dev-project-input").value.trim() || "Mi Juego";
+      try {
+        const res = await devApi("/api/dev/keys", {
+          method: "POST",
+          body: JSON.stringify({ projectName })
+        });
+        document.getElementById("dev-project-input").value = "";
+        copyText(res.uuid);
+        toast(`Clave de servidor creada para "${projectName}"`);
+        loadDevKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDevKey(uuid, name) {
+      if (!confirm(`¿Eliminar la clave de servidor de "${name}"?`)) return;
+      try {
+        await devApi(`/api/dev/keys/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+        toast("Clave de servidor eliminada");
+        loadDevKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt).then(() => toast("Clave de servidor copiada"));
+    }
+
+    // Salas activas y selectores del Desarrollador
+    async function loadDevOverview() {
+      const data = await devApi("/api/dev/overview");
+      const scopedIds = data.scopedGames || [];
+
+      const dbSel = document.getElementById("dev-db-game-select");
+      const wSel = document.getElementById("dev-world-game-select");
+      const curDb = dbSel.value;
+      const curW = wSel.value;
+
+      const opts = scopedIds.length
+        ? scopedIds.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("")
+        : `<option value="">(Conecta tu juego al menos una vez para verlo aquí)</option>`;
+
+      dbSel.innerHTML = opts;
+      wSel.innerHTML = opts;
+      if (curDb && scopedIds.includes(curDb)) dbSel.value = curDb;
+      if (curW && scopedIds.includes(curW)) wSel.value = curW;
+
+      // Renderizar salas activas
+      const container = document.getElementById("dev-live-rooms-container");
+      const entries = Object.entries(data.games || {}).filter(([, info]) => info.rooms && info.rooms.length > 0);
+      if (!entries.length) {
+        container.innerHTML = `<p style="color:var(--muted); text-align:center; padding:1.5rem;">No hay salas activas en tus juegos en este momento.</p>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(([gid, info]) => `
+        <div class="card" style="background:var(--bg);">
+          <div class="card-header">
+            <strong>Proyecto: <code>${escapeHtml(gid)}</code></strong>
+            <span class="badge ok">${info.rooms.length} sala(s) activa(s)</span>
+          </div>
+          ${info.rooms.map(r => `
+            <div style="border:1px solid var(--border); border-radius:8px; padding:0.85rem; margin-bottom:0.65rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span><strong>Sala:</strong> <code>${escapeHtml(r.id)}</code></span>
+                <span class="badge">${r.players.length}${r.max ? "/" + r.max : ""} jugadores</span>
+              </div>
+              <table>
+                <thead><tr><th>ID</th><th>Puesto</th><th>Estado</th><th style="text-align:right;">Acción</th></tr></thead>
+                <tbody>
+                  ${r.players.map(p => `
+                    <tr>
+                      <td><code>#${p.id}</code> ${p.id === r.host ? '<span class="badge warn">HOST</span>' : ''}</td>
+                      <td>Slot ${p.slot}</td>
+                      <td><code>${escapeHtml(JSON.stringify(p.state || {}))}</code></td>
+                      <td style="text-align:right;"><button class="btn btn-danger btn-sm" onclick="devKickPlayer(${p.id})">Expulsar</button></td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `).join("")}
+        </div>
+      `).join("");
+    }
+
+    async function devKickPlayer(playerId) {
+      if (!confirm(`¿Expulsar al jugador #${playerId} de tu sala?`)) return;
+      try {
+        await devApi("/api/dev/kick", { method: "POST", body: JSON.stringify({ playerId }) });
+        toast(`Jugador #${playerId} expulsado`);
+        loadDevOverview();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    // CRUD Base de Datos del Desarrollador
+    async function loadDevDbCollections() {
+      const gameId = document.getElementById("dev-db-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await devApi(`/api/dev/db/${encodeURIComponent(gameId)}`);
+        devCurrentDbData = res.data || {};
+        const cols = Object.keys(devCurrentDbData);
+        const colSel = document.getElementById("dev-db-col-select");
+        const prev = colSel.value;
+        colSel.innerHTML = cols.length
+          ? cols.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${Object.keys(devCurrentDbData[c]).length})</option>`).join("")
+          : `<option value="">(Sin colecciones aún)</option>`;
+        if (prev && cols.includes(prev)) colSel.value = prev;
+        loadDevDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadDevDbKeys() {
+      const col = document.getElementById("dev-db-col-select").value;
+      const list = document.getElementById("dev-db-keys-list");
+      if (!col || !devCurrentDbData[col]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">Selecciona o crea una colección.</div>`;
+        return;
+      }
+      const keys = Object.keys(devCurrentDbData[col]);
+      list.innerHTML = keys.map(k => `
+        <div class="list-item" onclick="editDevDbKey('${escapeHtml(col)}', '${escapeHtml(k)}')">
+          <span>${escapeHtml(k)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editDevDbKey(col, key) {
+      document.getElementById("dev-db-editor-title").textContent = `Editando: ${col} / ${key}`;
+      document.getElementById("dev-db-edit-col").value = col;
+      document.getElementById("dev-db-edit-key").value = key;
+      document.getElementById("dev-db-edit-val").value = JSON.stringify(devCurrentDbData[col][key], null, 2);
+      document.getElementById("dev-db-delete-btn").style.display = "inline-block";
+    }
+
+    function prepareNewDevDbRecord() {
+      document.getElementById("dev-db-editor-title").textContent = "Nuevo Registro Persistente";
+      document.getElementById("dev-db-edit-col").value = document.getElementById("dev-db-col-select").value || "";
+      document.getElementById("dev-db-edit-key").value = "";
+      document.getElementById("dev-db-edit-val").value = "{\n  \n}";
+      document.getElementById("dev-db-delete-btn").style.display = "none";
+    }
+
+    async function saveDevDbRecord() {
+      const gameId = document.getElementById("dev-db-game-select").value;
+      const col = document.getElementById("dev-db-edit-col").value.trim();
+      const key = document.getElementById("dev-db-edit-key").value.trim();
+      if (!gameId || !col || !key) return toast("Selecciona un juego y completa Colección y Clave", true);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(document.getElementById("dev-db-edit-val").value);
+      } catch {
+        return toast("El contenido no es un JSON válido", true);
+      }
+
+      try {
+        await devApi(`/api/dev/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "PUT",
+          body: JSON.stringify({ value: parsed })
+        });
+        toast(`Guardado ${col}/${key}`);
+        await loadDevDbCollections();
+        document.getElementById("dev-db-col-select").value = col;
+        loadDevDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDevDbRecord() {
+      const gameId = document.getElementById("dev-db-game-select").value;
+      const col = document.getElementById("dev-db-edit-col").value.trim();
+      const key = document.getElementById("dev-db-edit-key").value.trim();
+      if (!confirm(`¿Eliminar permanentemente "${col}/${key}"?`)) return;
+      try {
+        await devApi(`/api/dev/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "DELETE"
+        });
+        toast(`Eliminado ${col}/${key}`);
+        prepareNewDevDbRecord();
+        loadDevDbCollections();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    // CRUD Objetos Persistentes del Desarrollador
+    async function loadDevWorldRooms() {
+      const gameId = document.getElementById("dev-world-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await devApi(`/api/dev/world/${encodeURIComponent(gameId)}`);
+        devCurrentWorldData = res.data || {};
+        const rooms = Object.keys(devCurrentWorldData);
+        const rSel = document.getElementById("dev-world-room-select");
+        rSel.innerHTML = rooms.length
+          ? rooms.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)} (${Object.keys(devCurrentWorldData[r]).length} objs)</option>`).join("")
+          : `<option value="">(Sin objetos persistentes en salas)</option>`;
+        loadDevWorldObjects();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadDevWorldObjects() {
+      const roomId = document.getElementById("dev-world-room-select").value;
+      const list = document.getElementById("dev-world-objs-list");
+      if (!roomId || !devCurrentWorldData[roomId]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">No hay objetos persistentes en esta sala.</div>`;
+        return;
+      }
+      const ids = Object.keys(devCurrentWorldData[roomId]);
+      list.innerHTML = ids.map(id => `
+        <div class="list-item" onclick="editDevWorldObj('${escapeHtml(roomId)}', '${escapeHtml(id)}')">
+          <span>Objeto #${escapeHtml(id)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editDevWorldObj(roomId, objId) {
+      document.getElementById("dev-world-editor-title").textContent = `Sala "${roomId}" - Objeto #${objId}`;
+      document.getElementById("dev-world-edit-id").value = objId;
+      document.getElementById("dev-world-edit-val").value = JSON.stringify(devCurrentWorldData[roomId][objId], null, 2);
+      document.getElementById("dev-world-delete-btn").style.display = "inline-block";
+    }
+
+    async function saveDevWorldObject() {
+      const gameId = document.getElementById("dev-world-game-select").value;
+      const roomId = document.getElementById("dev-world-room-select").value;
+      const objId = document.getElementById("dev-world-edit-id").value;
+      if (!gameId || !roomId || !objId) return toast("Selecciona un objeto primero", true);
+
+      let props;
+      try {
+        props = JSON.parse(document.getElementById("dev-world-edit-val").value);
+      } catch {
+        return toast("JSON inválido", true);
+      }
+
+      try {
+        await devApi(`/api/dev/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ props })
+        });
+        toast(`Objeto #${objId} actualizado en vivo`);
+        loadDevWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDevWorldObject() {
+      const gameId = document.getElementById("dev-world-game-select").value;
+      const roomId = document.getElementById("dev-world-room-select").value;
+      const objId = document.getElementById("dev-world-edit-id").value;
+      if (!confirm(`¿Destruir el objeto #${objId} de la sala "${roomId}"?`)) return;
+      try {
+        await devApi(`/api/dev/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "DELETE"
+        });
+        toast(`Objeto #${objId} destruido`);
+        document.getElementById("dev-world-delete-btn").style.display = "none";
+        document.getElementById("dev-world-edit-val").value = "";
+        loadDevWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // DASHBOARD ADMINISTRADOR GLOBAL (TÚ)
+    // ------------------------------------------------------------------
+    function closeLoginModal() {
+      document.getElementById("login-modal").classList.remove("open");
+    }
+
+    document.querySelectorAll(".admin-tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".admin-tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".admin-section").forEach(s => s.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "keys") loadAdminKeys();
+        if (btn.dataset.tab === "db") loadDbCollections();
+        if (btn.dataset.tab === "world") loadWorldRooms();
+      });
+    });
+
+    function toast(msg, isError = false) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.style.borderColor = isError ? "var(--danger)" : "var(--success)";
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 3000);
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + ADMIN_TOKEN,
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Error HTTP " + res.status);
+      return data;
+    }
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      ADMIN_TOKEN = document.getElementById("token-input").value.trim();
+      const errEl = document.getElementById("login-error");
+      errEl.style.display = "none";
+      try {
+        await loadOverview();
+        localStorage.setItem("orbita_admin_token", ADMIN_TOKEN);
+        closeLoginModal();
+        switchView("admin");
+      } catch (err) {
+        errEl.textContent = "Token inválido o servidor inaccesible.";
+        errEl.style.display = "block";
+      }
+    });
+
+    function logout() {
+      localStorage.removeItem("orbita_admin_token");
+      ADMIN_TOKEN = "";
+      switchView("home");
+    }
+
+    function formatUptime(sec) {
+      if (sec < 60) return sec + "s";
+      if (sec < 3600) return Math.floor(sec / 60) + "m " + (sec % 60) + "s";
+      return Math.floor(sec / 3600) + "h " + Math.floor((sec % 3600) / 60) + "m";
+    }
+
+    async function loadOverview() {
+      const data = await api("/api/admin/overview");
+      document.getElementById("stat-players").textContent = data.totalConnections;
+      document.getElementById("stat-uptime").textContent = formatUptime(data.uptimeSec);
+      document.getElementById("stat-devs").textContent = data.totalDevelopers || 0;
+
+      const gameIds = Object.keys(data.games);
+      let totalRooms = 0;
+      gameIds.forEach(g => totalRooms += data.games[g].rooms.length);
+      document.getElementById("stat-rooms").textContent = totalRooms;
+
+      renderLiveGames(data.games);
+      syncGameSelectors(data);
+    }
+
+    function renderLiveGames(gamesObj) {
+      const container = document.getElementById("live-games-container");
+      const entries = Object.entries(gamesObj);
+      if (entries.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted); padding:2.5rem;">No hay jugadores conectados en este momento.</div>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(([gid, info]) => {
+        const modBadge = info.hasModule
+          ? `<span class="badge ok">Módulo games/${gid.toLowerCase()}.js activo</span>`
+          : `<span class="badge">Modo Estándar (Relay)</span>`;
+
+        const roomsHtml = info.rooms.length === 0
+          ? `<p style="color:var(--muted); font-size:0.88rem;">Jugadores en lobby (sin sala asignada).</p>`
+          : info.rooms.map(r => `
+              <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.9rem; margin-bottom:0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+                  <div>
+                    <strong>Sala:</strong> <code>${escapeHtml(r.id)}</code>
+                    <span class="badge" style="margin-left:0.4rem;">${r.players.length}${r.max ? "/" + r.max : ""} jugadores</span>
+                  </div>
+                  <span style="font-size:0.8rem; color:var(--muted);">Host ID: <code>${r.host}</code></span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Puesto</th>
+                      <th>Server Data (pdata)</th>
+                      <th>Estado (state)</th>
+                      <th style="text-align:right;">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${r.players.map(p => `
+                      <tr>
+                        <td><code>#${p.id}</code> ${p.id === r.host ? '<span class="badge warn">HOST</span>' : ''}</td>
+                        <td>Slot ${p.slot}</td>
+                        <td><code>${escapeHtml(JSON.stringify(p.pdata || {}))}</code></td>
+                        <td><code>${escapeHtml(JSON.stringify(p.state || {}))}</code></td>
+                        <td style="text-align:right;">
+                          <button class="btn btn-danger btn-sm" onclick="kickPlayer(${p.id})">Kick</button>
+                        </td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            `).join("");
+
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div style="display:flex; align-items:center; gap:0.6rem;">
+                <h3 style="font-size:1.1rem;">${escapeHtml(gid)}</h3>
+                ${modBadge}
+              </div>
+              <span class="badge">${info.rooms.length} salas</span>
+            </div>
+            ${roomsHtml}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function kickPlayer(playerId) {
+      if (!confirm(`¿Expulsar al jugador #${playerId}?`)) return;
+      try {
+        await api("/api/admin/kick", { method: "POST", body: JSON.stringify({ playerId }) });
+        toast(`Jugador #${playerId} expulsado`);
+        loadOverview();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function loadAdminKeys() {
+      const tbody = document.getElementById("admin-keys-tbody");
+      try {
+        const res = await api("/api/admin/keys");
+        const list = res.keys || [];
+        if (!list.length) {
+          tbody.innerHTML = `<tr><td colspan="6" style="color:var(--muted); text-align:center; padding:1.5rem;">Aún no hay claves de servidor registradas.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = list.map(k => `
+          <tr>
+            <td><strong>${escapeHtml(k.owner)}</strong></td>
+            <td>${escapeHtml(k.projectName)}</td>
+            <td><code>${escapeHtml(k.uuid)}</code></td>
+            <td><code>${k.onlineNow}</code></td>
+            <td>${k.active ? '<span class="badge ok">Activa</span>' : '<span class="badge danger">Pausada</span>'}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-secondary btn-sm" onclick="toggleApiKey('${escapeHtml(k.uuid)}', ${!k.active})">${k.active ? "Pausar" : "Activar"}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteAdminKey('${escapeHtml(k.uuid)}')">Borrar</button>
+            </td>
+          </tr>
+        `).join("");
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger); text-align:center;">Error: ${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    async function toggleApiKey(uuid, active) {
+      try {
+        await api(`/api/admin/keys/${encodeURIComponent(uuid)}`, {
+          method: "PUT",
+          body: JSON.stringify({ active })
+        });
+        toast(active ? "Clave activada" : "Clave pausada");
+        loadAdminKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteAdminKey(uuid) {
+      if (!confirm("¿Eliminar permanentemente esta clave de servidor?")) return;
+      try {
+        await api(`/api/admin/keys/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+        toast("Clave eliminada");
+        loadAdminKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function syncGameSelectors(data) {
+      const dbSel = document.getElementById("db-game-select");
+      const wSel = document.getElementById("world-game-select");
+      const curDb = dbSel.value;
+      const curW = wSel.value;
+
+      const allGames = Array.from(new Set([...Object.keys(data.games), ...data.knownDbGames, ...data.knownWorldGames, "Ahspai"]));
+      const opts = allGames.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
+
+      if (dbSel.innerHTML !== opts) {
+        dbSel.innerHTML = opts;
+        if (curDb && allGames.includes(curDb)) dbSel.value = curDb;
+      }
+      if (wSel.innerHTML !== opts) {
+        wSel.innerHTML = opts;
+        if (curW && allGames.includes(curW)) wSel.value = curW;
+      }
+    }
+
+    // CRUD BASE DE DATOS ADMIN (db.json)
+    function selectCustomDbGame() {
+      const g = document.getElementById("db-new-game").value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!g) return;
+      const sel = document.getElementById("db-game-select");
+      if (![...sel.options].some(o => o.value === g)) sel.add(new Option(g, g));
+      sel.value = g;
+      document.getElementById("db-new-game").value = "";
+      loadDbCollections();
+    }
+
+    async function deleteEntireGame() {
+      const gameId = document.getElementById("db-game-select").value;
+      if (!gameId) return;
+      if (!confirm(`¿Eliminar por completo el juego "${gameId}"?`)) return;
+      try {
+        await api(`/api/admin/game/${encodeURIComponent(gameId)}`, { method: "DELETE" });
+        toast(`Juego "${gameId}" eliminado`);
+        await loadOverview();
+        loadDbCollections();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function loadDbCollections() {
+      const gameId = document.getElementById("db-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await api(`/api/admin/db/${encodeURIComponent(gameId)}`);
+        currentDbData = res.data || {};
+        const cols = Object.keys(currentDbData);
+        const colSel = document.getElementById("db-col-select");
+        const prev = colSel.value;
+        colSel.innerHTML = cols.length
+          ? cols.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${Object.keys(currentDbData[c]).length})</option>`).join("")
+          : `<option value="">(Sin colecciones aún)</option>`;
+        if (prev && cols.includes(prev)) colSel.value = prev;
+        loadDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadDbKeys() {
+      const col = document.getElementById("db-col-select").value;
+      const list = document.getElementById("db-keys-list");
+      if (!col || !currentDbData[col]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">Selecciona o crea una colección.</div>`;
+        return;
+      }
+      const keys = Object.keys(currentDbData[col]);
+      list.innerHTML = keys.map(k => `
+        <div class="list-item" onclick="editDbKey('${escapeHtml(col)}', '${escapeHtml(k)}')">
+          <span>${escapeHtml(k)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editDbKey(col, key) {
+      document.getElementById("db-editor-title").textContent = `Editando: ${col} / ${key}`;
+      document.getElementById("db-edit-col").value = col;
+      document.getElementById("db-edit-key").value = key;
+      document.getElementById("db-edit-val").value = JSON.stringify(currentDbData[col][key], null, 2);
+      document.getElementById("db-delete-btn").style.display = "inline-block";
+    }
+
+    function prepareNewDbRecord() {
+      document.getElementById("db-editor-title").textContent = "Nuevo Registro Persistente";
+      document.getElementById("db-edit-col").value = document.getElementById("db-col-select").value || "";
+      document.getElementById("db-edit-key").value = "";
+      document.getElementById("db-edit-val").value = "{\n  \n}";
+      document.getElementById("db-delete-btn").style.display = "none";
+    }
+
+    async function saveDbRecord() {
+      const gameId = document.getElementById("db-game-select").value;
+      const col = document.getElementById("db-edit-col").value.trim();
+      const key = document.getElementById("db-edit-key").value.trim();
+      if (!gameId || !col || !key) return toast("Completa Juego, Colección y Clave", true);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(document.getElementById("db-edit-val").value);
+      } catch {
+        return toast("El contenido no es un JSON válido", true);
+      }
+
+      try {
+        await api(`/api/admin/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "PUT",
+          body: JSON.stringify({ value: parsed })
+        });
+        toast(`Guardado ${col}/${key}`);
+        await loadDbCollections();
+        document.getElementById("db-col-select").value = col;
+        loadDbKeys();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteDbRecord() {
+      const gameId = document.getElementById("db-game-select").value;
+      const col = document.getElementById("db-edit-col").value.trim();
+      const key = document.getElementById("db-edit-key").value.trim();
+      if (!confirm(`¿Eliminar permanentemente "${col}/${key}"?`)) return;
+      try {
+        await api(`/api/admin/db/${encodeURIComponent(gameId)}/${encodeURIComponent(col)}/${encodeURIComponent(key)}`, {
+          method: "DELETE"
+        });
+        toast(`Eliminado ${col}/${key}`);
+        prepareNewDbRecord();
+        loadDbCollections();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    // CRUD MUNDO PERSISTENTE ADMIN (world.json)
+    async function loadWorldRooms() {
+      const gameId = document.getElementById("world-game-select").value;
+      if (!gameId) return;
+      try {
+        const res = await api(`/api/admin/world/${encodeURIComponent(gameId)}`);
+        currentWorldData = res.data || {};
+        const rooms = Object.keys(currentWorldData);
+        const rSel = document.getElementById("world-room-select");
+        rSel.innerHTML = rooms.length
+          ? rooms.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)} (${Object.keys(currentWorldData[r]).length} objs)</option>`).join("")
+          : `<option value="">(Sin objetos persistentes en salas)</option>`;
+        loadWorldObjects();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function loadWorldObjects() {
+      const roomId = document.getElementById("world-room-select").value;
+      const list = document.getElementById("world-objs-list");
+      if (!roomId || !currentWorldData[roomId]) {
+        list.innerHTML = `<div style="padding:1rem; color:var(--muted); font-size:0.85rem;">No hay objetos en esta sala.</div>`;
+        return;
+      }
+      const ids = Object.keys(currentWorldData[roomId]);
+      list.innerHTML = ids.map(id => `
+        <div class="list-item" onclick="editWorldObj('${escapeHtml(roomId)}', '${escapeHtml(id)}')">
+          <span>Objeto #${escapeHtml(id)}</span>
+          <span style="color:var(--muted); font-size:0.75rem;">editar -></span>
+        </div>
+      `).join("");
+    }
+
+    function editWorldObj(roomId, objId) {
+      document.getElementById("world-editor-title").textContent = `Sala "${roomId}" - Objeto #${objId}`;
+      document.getElementById("world-edit-id").value = objId;
+      document.getElementById("world-edit-val").value = JSON.stringify(currentWorldData[roomId][objId], null, 2);
+      document.getElementById("world-delete-btn").style.display = "inline-block";
+    }
+
+    async function saveWorldObject() {
+      const gameId = document.getElementById("world-game-select").value;
+      const roomId = document.getElementById("world-room-select").value;
+      const objId = document.getElementById("world-edit-id").value;
+      if (!gameId || !roomId || !objId) return toast("Selecciona un objeto primero", true);
+
+      let props;
+      try {
+        props = JSON.parse(document.getElementById("world-edit-val").value);
+      } catch {
+        return toast("JSON inválido", true);
+      }
+
+      try {
+        await api(`/api/admin/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ props })
+        });
+        toast(`Objeto #${objId} actualizado y sincronizado`);
+        loadWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    async function deleteWorldObject() {
+      const gameId = document.getElementById("world-game-select").value;
+      const roomId = document.getElementById("world-room-select").value;
+      const objId = document.getElementById("world-edit-id").value;
+      if (!confirm(`¿Destruir el objeto #${objId} de la sala "${roomId}"?`)) return;
+      try {
+        await api(`/api/admin/world/${encodeURIComponent(gameId)}/${encodeURIComponent(roomId)}/${encodeURIComponent(objId)}`, {
+          method: "DELETE"
+        });
+        toast(`Objeto #${objId} destruido`);
+        document.getElementById("world-delete-btn").style.display = "none";
+        document.getElementById("world-edit-val").value = "";
+        loadWorldRooms();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    }
+
+    function refreshAll() {
+      if (!ADMIN_TOKEN) return;
+      loadOverview().catch(() => {});
+      if (document.getElementById("tab-keys").classList.contains("active")) loadAdminKeys();
+    }
+
+    // Inicio
+    renderDocs();
+
+    setInterval(() => {
+      if (ADMIN_TOKEN && document.getElementById("view-admin").classList.contains("active") && document.getElementById("auto-refresh").checked) {
+        loadOverview().catch(() => {});
+        if (document.getElementById("tab-keys").classList.contains("active")) loadAdminKeys();
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

@@ -18,8 +18,12 @@ const PROTOCOL = 1;
 const PORT = Number(process.env.PORT) || 3000;
 const GAME_KEY = process.env.GAME_KEY || "";
 const GAME_KEY_MD5 = GAME_KEY ? md5(GAME_KEY) : "";
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "orbita_dev_token";
+// Sin ADMIN_TOKEN el panel de admin queda APAGADO (antes había una clave por defecto que cualquiera podía adivinar).
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const STRICT_DB_WRITE = process.env.STRICT_DB_WRITE === "true";
+// Detrás de un hosting (Render, Railway, nginx...) la IP real viene en X-Forwarded-For.
+const TRUST_PROXY = process.env.TRUST_PROXY ? process.env.TRUST_PROXY === "true" : Boolean(process.env.RENDER);
+const CORS_ORIGIN = process.env.CORS_ORIGIN || ""; // vacío = el panel solo funciona desde el mismo servidor
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const GAMES_DIR = process.env.GAMES_DIR || path.join(__dirname, "games");
@@ -27,6 +31,18 @@ const PUBLIC_DIR = process.env.PUBLIC_DIR || path.join(__dirname, "public");
 
 const MAX_MSG_PER_SEC = Number(process.env.MAX_MSG_PER_SEC) || 240;
 const MAX_ROOM_SIZE = Number(process.env.MAX_ROOM_SIZE) || 64;
+const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP) || 32;
+const MAX_ENTITIES_PER_PLAYER = Number(process.env.MAX_ENTITIES_PER_PLAYER) || 512;
+const MAX_STATE_KEYS = Number(process.env.MAX_STATE_KEYS) || 128;
+const MAX_DB_VALUE_BYTES = Number(process.env.MAX_DB_VALUE_BYTES) || 64 * 1024;
+const MAX_DB_DOCS_PER_COLLECTION = Number(process.env.MAX_DB_DOCS_PER_COLLECTION) || 10000;
+const MAX_WORLD_OBJECTS_PER_ROOM = Number(process.env.MAX_WORLD_OBJECTS_PER_ROOM) || 2000;
+const MAX_KEYS_PER_DEV = Number(process.env.MAX_KEYS_PER_DEV) || 100;
+const MAX_PROJECTS_PER_DEV = Number(process.env.MAX_PROJECTS_PER_DEV) || 20;
+const MAX_KEYS_PER_PROJECT = Number(process.env.MAX_KEYS_PER_PROJECT) || 5;
+const HELLO_TIMEOUT_MS = 10000;
+const DEV_SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
+const AUTH_MAX_PER_MINUTE = Number(process.env.AUTH_MAX_PER_MINUTE) || 10;
 
 const AI_PROVIDER = (process.env.AI_PROVIDER || "anthropic").toLowerCase();
 const AI_API_KEY = process.env.AI_API_KEY || "";
@@ -35,7 +51,12 @@ const AI_API_URL =
   process.env.AI_API_URL ||
   (AI_PROVIDER === "anthropic" ? "https://api.anthropic.com/v1/messages" : "https://api.openai.com/v1/chat/completions");
 const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS) || 512;
-const AI_MAX_PER_MINUTE = Number(process.env.AI_MAX_PER_MINUTE) || 10;
+const AI_MAX_PER_MINUTE = Number(process.env.AI_MAX_PER_MINUTE) || 10; // por IP
+const AI_KEY_MAX_PER_MINUTE = Number(process.env.AI_KEY_MAX_PER_MINUTE) || 60; // por clave (todos los jugadores de ese juego juntos)
+// La IA y Discord gastan TUS créditos / usan TU bot. Las claves de desarrollador no los usan
+// a menos que lo actives (para todas con estas variables, o por clave desde la API de admin).
+const DEV_KEYS_AI = process.env.DEV_KEYS_AI === "true";
+const DEV_KEYS_DISCORD = process.env.DEV_KEYS_DISCORD === "true";
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID || "";
@@ -46,8 +67,50 @@ const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 function md5(s) {
   return crypto.createHash("md5").update(s, "utf8").digest("hex");
 }
+// Async para no congelar el servidor mientras calcula (antes era scryptSync).
 function hashPassword(password, salt) {
-  return crypto.scryptSync(String(password), String(salt), 64).toString("hex");
+  return new Promise((resolve, reject) =>
+    crypto.scrypt(String(password), String(salt), 64, (err, key) => (err ? reject(err) : resolve(key.toString("hex")))),
+  );
+}
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+// Quita __proto__ / constructor / prototype de un objeto (para que nadie cambie prototipos).
+function cleanKeys(obj, maxKeys = Infinity) {
+  const out = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(obj)) {
+    if (FORBIDDEN_KEYS.has(k)) continue;
+    if (++n > maxKeys) break;
+    out[k] = v;
+  }
+  return out;
+}
+function jsonSize(v) {
+  try { return Buffer.byteLength(JSON.stringify(v) ?? ""); } catch { return Infinity; }
+}
+// Límite de veces por minuto compartido (por IP, por clave...). Se limpia solo.
+const globalRates = new Map();
+function allowGlobalRate(bucket, perMinute) {
+  const now = Date.now();
+  const arr = (globalRates.get(bucket) || []).filter((t) => now - t < 60000);
+  if (arr.length >= perMinute) { globalRates.set(bucket, arr); return false; }
+  arr.push(now);
+  globalRates.set(bucket, arr);
+  return true;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, arr] of globalRates) if (!arr.length || now - arr[arr.length - 1] >= 60000) globalRates.delete(k);
+}, 60000).unref();
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const xff = String(req.headers["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (xff.length) return xff[xff.length - 1]; // la última la pone el proxy, no se puede falsificar
+  }
+  return req.socket.remoteAddress || "?";
 }
 function log(...a) {
   console.log(new Date().toISOString(), ...a);
@@ -65,7 +128,11 @@ const str = (v, max = 128) => {
   const s = String(v).slice(0, max);
   return FORBIDDEN_KEYS.has(s) ? "" : s;
 };
-const safeKey = (v, max = 64) => str(v, max).replace(/[^a-zA-Z0-9_-]/g, "");
+// Letras, números, "_", "-" y "." (el punto deja usar versiones como "1.0" en ORB_GAME_ID)
+const safeKey = (v, max = 64) => {
+  const k = str(v, max).replace(/[^a-zA-Z0-9_.-]/g, "");
+  return /^\.+$/.test(k) ? "" : k;
+};
 
 // ------------------------------------------------------------------
 // Datos en disco: db, world, keys UUID y cuentas de desarrolladores
@@ -78,12 +145,15 @@ const DB_FILE = path.join(DATA_DIR, "db.json");
 const WORLD_FILE = path.join(DATA_DIR, "world.json");
 const KEYS_FILE = path.join(DATA_DIR, "keys.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
+const PROJECTS_FILE = path.join(DATA_DIR, "projects.json");
 
 const db = safeJSON(fs.existsSync(DB_FILE) ? fs.readFileSync(DB_FILE, "utf8") : "{}", {});
 const world = safeJSON(fs.existsSync(WORLD_FILE) ? fs.readFileSync(WORLD_FILE, "utf8") : "{}", {});
 const keysRegistry = safeJSON(fs.existsSync(KEYS_FILE) ? fs.readFileSync(KEYS_FILE, "utf8") : "{}", {});
 const usersRegistry = safeJSON(fs.existsSync(USERS_FILE) ? fs.readFileSync(USERS_FILE, "utf8") : "{}", {});
-const dirty = { db: false, world: false, keys: false, users: false };
+// Proyectos: un proyecto = un juego. Sus claves solo sirven para entrar; los datos son del proyecto.
+const projectsRegistry = safeJSON(fs.existsSync(PROJECTS_FILE) ? fs.readFileSync(PROJECTS_FILE, "utf8") : "{}", {});
+const dirty = { db: false, world: false, keys: false, users: false, projects: false };
 
 // Sesiones activas en memoria de desarrolladores (token -> userId)
 const devSessions = new Map();
@@ -94,6 +164,7 @@ function flush() {
     ["world", WORLD_FILE, world],
     ["keys", KEYS_FILE, keysRegistry],
     ["users", USERS_FILE, usersRegistry],
+    ["projects", PROJECTS_FILE, projectsRegistry],
   ]) {
     if (!dirty[k]) continue;
     dirty[k] = false;
@@ -107,6 +178,13 @@ function flush() {
 }
 setInterval(flush, 2000);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); process.exit(0); });
+// Si algo revienta, guarda antes de cerrar para no perder los últimos 2 segundos.
+process.on("uncaughtException", (e) => {
+  log("Error fatal:", e && e.stack ? e.stack : e);
+  for (const k of Object.keys(dirty)) dirty[k] = true;
+  flush();
+  process.exit(1);
+});
 
 const gameDb = (g) => {
   const id = safeKey(g) || "default";
@@ -116,9 +194,203 @@ const gameWorld = (g) => {
   const id = safeKey(g) || "default";
   return (world[id] ||= { next: 1, rooms: {} });
 };
+// Solo leer, sin crear entradas vacías (para los GET del panel)
+const peekDb = (g) => db[safeKey(g) || "default"] || {};
+const peekWorld = (g) => world[safeKey(g) || "default"] || { next: 1, rooms: {} };
+
+// ------------------------------------------------------------------
+// Proyectos
+//   Proyecto "p_xxxxxxxxxx" (o "k_xxxxxxxx" si venía de una clave vieja)
+//   Base de datos: una por proyecto            -> db["<proyecto>"]
+//   Versión / modo (ORB_GAME_ID): salas aparte -> "<proyecto>_<ORB_GAME_ID>"
+//   (así jugadores de la 1.0 y la 1.1 no se juntan, pero comparten su progreso)
+// ------------------------------------------------------------------
+const PROJECT_NS_RE = /^((?:k_[0-9a-f]{8})|(?:p_[0-9a-f]{10}))(?:_(.+))?$/;
+function projectOfNs(ns) {
+  const m = PROJECT_NS_RE.exec(String(ns || ""));
+  return m && projectsRegistry[m[1]] ? m[1] : "";
+}
+// Dónde vive la base de datos de un juego/canal
+function dbNsOf(ns) {
+  return projectOfNs(ns) || ns;
+}
+function newProjectId() {
+  for (;;) {
+    const id = "p_" + crypto.randomBytes(5).toString("hex");
+    if (!projectsRegistry[id]) return id;
+  }
+}
+function projectKeys(pid) {
+  return Object.entries(keysRegistry).filter(([, k]) => k && k.projectId === pid);
+}
+function channelsOfProject(pid) {
+  const prefix = pid + "_";
+  const set = new Set();
+  for (const ns of [...games.keys(), ...Object.keys(world)]) if (ns.startsWith(prefix)) set.add(ns);
+  return [...set];
+}
+
+// Pasa las claves viejas (una clave = un juego) al modelo de proyectos, sin perder nada.
+// Antes de tocar algo hace una copia de la carpeta data en data/respaldo-<fecha>/
+(function migrateToProjects() {
+  const legacyKeys = Object.entries(keysRegistry).filter(([, info]) => info && !info.projectId);
+  const legacyDb = Object.keys(db).filter((ns) => /^k_[0-9a-f]{8}_/.test(ns));
+  if (!legacyKeys.length && !legacyDb.length) return;
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupDir = path.join(DATA_DIR, `respaldo-${stamp}`);
+  try {
+    fs.mkdirSync(backupDir, { recursive: true });
+    for (const f of [DB_FILE, WORLD_FILE, KEYS_FILE, USERS_FILE, PROJECTS_FILE]) {
+      if (fs.existsSync(f)) fs.copyFileSync(f, path.join(backupDir, path.basename(f)));
+    }
+    log(`Migración a proyectos: respaldo guardado en ${backupDir}`);
+  } catch (e) {
+    log("No se pudo hacer el respaldo, no migro nada:", e.message);
+    return;
+  }
+
+  for (const [uuid, info] of legacyKeys) {
+    const pid = `k_${uuid.slice(0, 8)}`;
+    if (!projectsRegistry[pid]) {
+      projectsRegistry[pid] = {
+        name: info.projectName || "Mi Juego",
+        userId: info.userId || null,
+        owner: info.owner || "Admin",
+        createdAt: info.createdAt || new Date().toISOString(),
+        ...(typeof info.ai === "boolean" ? { ai: info.ai } : {}),
+        ...(typeof info.discord === "boolean" ? { discord: info.discord } : {}),
+      };
+    }
+    info.projectId = pid;
+    info.label = info.label || "Principal";
+  }
+
+  // La base de datos pasa de "k_xxxxxxxx_<juego>" a "k_xxxxxxxx" (una por proyecto)
+  for (const ns of legacyDb) {
+    const pid = ns.slice(0, 10);
+    if (!projectsRegistry[pid]) continue;
+    const target = (db[pid] ||= {});
+    let conflict = false;
+    for (const [col, docs] of Object.entries(db[ns] || {})) {
+      if (!isObj(docs)) continue;
+      const t = (target[col] ||= {});
+      for (const [k, v] of Object.entries(docs)) {
+        if (Object.prototype.hasOwnProperty.call(t, k)) { conflict = true; continue; }
+        t[k] = v;
+      }
+    }
+    if (conflict) log(`Migración: "${ns}" tenía datos repetidos con otra versión; lo dejo también como estaba`);
+    else delete db[ns];
+  }
+  for (const k of Object.keys(dirty)) dirty[k] = true;
+  flush();
+  log(`Migración a proyectos lista: ${legacyKeys.length} clave(s) convertidas`);
+})();
+function createProject(name, user) {
+  const pid = newProjectId();
+  projectsRegistry[pid] = {
+    name,
+    userId: user ? user.id : null,
+    owner: user ? `${user.name} (${user.email})` : "Admin",
+    createdAt: new Date().toISOString(),
+  };
+  dirty.projects = true;
+  return pid;
+}
+function createKey(pid, label, user) {
+  const uuid = newKeyUuid();
+  keysRegistry[uuid] = {
+    projectId: pid,
+    label,
+    userId: user ? user.id : projectsRegistry[pid]?.userId || null,
+    owner: projectsRegistry[pid]?.owner || "Admin",
+    projectName: projectsRegistry[pid]?.name || "",
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+  dirty.keys = true;
+  return uuid;
+}
+function deleteProject(pid) {
+  disconnectProject(pid);
+  for (const [uuid] of projectKeys(pid)) delete keysRegistry[uuid];
+  const prefix = pid + "_";
+  for (const ns of new Set([...Object.keys(db), ...Object.keys(world), ...games.keys()])) {
+    if (ns !== pid && !ns.startsWith(prefix)) continue;
+    delete db[ns];
+    delete world[ns];
+    games.delete(ns);
+    loadedModules.delete(ns);
+  }
+  delete projectsRegistry[pid];
+  dirty.keys = dirty.db = dirty.world = dirty.projects = true;
+}
+function projectSummary(pid) {
+  const p = projectsRegistry[pid];
+  let online = 0;
+  for (const c of clients.values()) if (c.ready && c.projectId === pid) online++;
+  const channels = channelsOfProject(pid);
+  let rooms = 0;
+  for (const ns of channels) rooms += games.get(ns)?.rooms.size || 0;
+  return {
+    id: pid,
+    name: p.name,
+    owner: p.owner || "",
+    createdAt: p.createdAt || null,
+    keys: projectKeys(pid).length,
+    online,
+    rooms,
+    versions: channels.map((ns) => ns.slice(pid.length + 1)),
+    ai: typeof p.ai === "boolean" ? p.ai : DEV_KEYS_AI,
+    discord: typeof p.discord === "boolean" ? p.discord : DEV_KEYS_DISCORD,
+    requests: isObj(p.requests) ? p.requests : {},
+  };
+}
+function projectDetail(pid, withKeys) {
+  const out = projectSummary(pid);
+  if (withKeys) {
+    out.keyList = projectKeys(pid).map(([uuid, k]) => ({
+      uuid,
+      label: k.label || "Clave",
+      active: k.active !== false,
+      onlineNow: countActivePlayersByKey(uuid),
+      createdAt: k.createdAt || null,
+    }));
+  }
+  out.channels = channelsOfProject(pid).map((ns) => {
+    const g = games.get(ns);
+    const w = peekWorld(ns);
+    return {
+      gameId: ns.slice(pid.length + 1),
+      ns,
+      rooms: g
+        ? [...g.rooms.values()].map((r) => ({
+            id: r.id,
+            max: r.max,
+            host: hostOf(r),
+            createdAt: r.createdAt || null,
+            worldObjects: Object.keys(w.rooms[r.id] || {}).length,
+            players: r.members.map((id) => {
+              const pl = clients.get(id);
+              return pl
+                ? { id: pl.id, slot: pl.slot, state: pl.state, entities: Object.keys(pl.entities).length, pdata: pl.pdata }
+                : { id };
+            }),
+          }))
+        : [],
+      queues: g ? [...g.queues.values()].map((q) => ({ mode: q.mode, size: q.size, waiting: q.members.length })) : [],
+      worldRooms: Object.entries(w.rooms).map(([id, objs]) => ({ id, objects: Object.keys(objs).length })),
+    };
+  });
+  const pdb = peekDb(pid);
+  out.collections = Object.entries(pdb).map(([name, docs]) => ({ name, docs: Object.keys(docs || {}).length }));
+  return out;
+}
+
 
 function resolveApiKey(clientKeyHash) {
-  if (GAME_KEY_MD5 && clientKeyHash === GAME_KEY_MD5) {
+  if (GAME_KEY_MD5 && clientKeyHash && safeEqual(clientKeyHash, GAME_KEY_MD5)) {
     return { keyId: "master", owner: "Admin", active: true };
   }
   for (const [uuid, info] of Object.entries(keysRegistry)) {
@@ -129,6 +401,35 @@ function resolveApiKey(clientKeyHash) {
   return null;
 }
 
+// Clave nueva cuyo prefijo de 8 letras no choque con otra (los juegos se separan por ese prefijo)
+function newKeyUuid() {
+  for (;;) {
+    const uuid = crypto.randomUUID();
+    const prefix = uuid.slice(0, 8);
+    if (!Object.keys(keysRegistry).some((k) => k.slice(0, 8) === prefix)) return uuid;
+  }
+}
+// Al desactivar o borrar una clave, saca a los que estaban conectados con ella
+function disconnectKey(keyId) {
+  for (const c of clients.values()) {
+    if (c.ready && c.apiKeyId === keyId) {
+      send(c, { t: "err", code: "bad_key", msg: "La clave del juego fue desactivada" });
+      c.ws.close();
+    }
+  }
+}
+function canUseService(c, service) {
+  if (c.apiKeyId === "master") return true;
+  const proj = projectsRegistry[c.projectId];
+  if (proj && typeof proj[service] === "boolean") return proj[service];
+  const info = keysRegistry[c.apiKeyId];
+  if (info && typeof info[service] === "boolean") return info[service];
+  return service === "ai" ? DEV_KEYS_AI : DEV_KEYS_DISCORD;
+}
+function disconnectProject(pid) {
+  for (const [uuid] of projectKeys(pid)) disconnectKey(uuid);
+}
+
 function countActivePlayersByKey(keyId) {
   let count = 0;
   for (const c of clients.values()) {
@@ -137,26 +438,15 @@ function countActivePlayersByKey(keyId) {
   return count;
 }
 
-// Verifica si un scopedGameId (ej. k_12345678_MiJuego) pertenece a una clave del usuario
+// ¿Este juego/canal (ej. p_0123456789_1.0, o el proyecto mismo) es de este usuario?
 function userOwnsScopedGame(userId, scopedGameId) {
-  const userPrefixes = Object.entries(keysRegistry)
-    .filter(([, info]) => info.userId === userId)
-    .map(([uuid]) => `k_${uuid.slice(0, 8)}_`);
-  return userPrefixes.some((prefix) => scopedGameId.startsWith(prefix));
+  const pid = projectOfNs(scopedGameId);
+  return Boolean(pid) && projectsRegistry[pid].userId === userId;
 }
 
 function getUserScopedGames(userId) {
-  const userPrefixes = Object.entries(keysRegistry)
-    .filter(([, info]) => info.userId === userId)
-    .map(([uuid]) => `k_${uuid.slice(0, 8)}_`);
-
-  const allKnownIds = new Set([
-    ...games.keys(),
-    ...Object.keys(db),
-    ...Object.keys(world),
-  ]);
-
-  return [...allKnownIds].filter((gid) => userPrefixes.some((prefix) => gid.startsWith(prefix)));
+  const allKnownIds = new Set([...games.keys(), ...Object.keys(db), ...Object.keys(world)]);
+  return [...allKnownIds].filter((gid) => userOwnsScopedGame(userId, gid));
 }
 
 // ------------------------------------------------------------------
@@ -203,6 +493,7 @@ try {
 
 function createGameApi(gameId) {
   const gid = safeKey(gameId) || "default";
+  const dbg = dbNsOf(gid); // la base de datos es del proyecto (compartida entre versiones)
   return {
     gameId: gid,
     log: (...args) => log(`[${gid}]`, ...args),
@@ -245,17 +536,17 @@ function createGameApi(gameId) {
     },
     db: {
       get(a, b, c) {
-        const [g, col, key] = c !== undefined ? [a, b, c] : [gid, a, b];
-        return (gameDb(g)[col] || {})[key];
+        const [g, col, key] = c !== undefined ? [a, b, c] : [dbg, a, b];
+        return (peekDb(g)[col] || {})[key];
       },
       set(a, b, c, d) {
-        const [g, col, key, val] = d !== undefined ? [a, b, c, d] : [gid, a, b, c];
+        const [g, col, key, val] = d !== undefined ? [a, b, c, d] : [dbg, a, b, c];
         if (!col || !key) return;
         (gameDb(g)[col] ||= {})[key] = val;
         dirty.db = true;
       },
       delete(a, b, c) {
-        const [g, col, key] = c !== undefined ? [a, b, c] : [gid, a, b];
+        const [g, col, key] = c !== undefined ? [a, b, c] : [dbg, a, b];
         if (gameDb(g)[col]) {
           delete gameDb(g)[col][key];
           if (!Object.keys(gameDb(g)[col]).length) delete gameDb(g)[col];
@@ -263,8 +554,8 @@ function createGameApi(gameId) {
         }
       },
       list(a, b) {
-        const [g, col] = b !== undefined ? [a, b] : [gid, a];
-        return col ? Object.keys(gameDb(g)[col] || {}) : Object.keys(gameDb(g));
+        const [g, col] = b !== undefined ? [a, b] : [dbg, a];
+        return col ? Object.keys(peekDb(g)[col] || {}) : Object.keys(peekDb(g));
       },
     },
   };
@@ -275,7 +566,10 @@ function getGameModule(gameId) {
   if (loadedModules.has(gid)) return loadedModules.get(gid);
 
   const files = fs.readdirSync(GAMES_DIR);
-  const match = files.find((f) => f.toLowerCase() === `${gid.toLowerCase()}.js`);
+  const pid = projectOfNs(gid);
+  const match =
+    files.find((f) => f.toLowerCase() === `${gid.toLowerCase()}.js`) ||
+    (pid ? files.find((f) => f.toLowerCase() === `${pid.toLowerCase()}.js`) : undefined);
   let mod = null;
 
   if (match) {
@@ -425,7 +719,8 @@ async function callAI(messages, temperature) {
     .map((m) => ({ role: ["system", "assistant"].includes(m.role) ? m.role : "user", content: m.content.slice(0, 8000) }))
     .slice(-40);
   if (!messages.some((m) => m.role !== "system")) throw new Error("no_messages");
-  const temp = Math.max(0, Math.min(1, Number(temperature) || 0.7));
+  const t = Number(temperature);
+  const temp = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0.7));
 
   if (AI_PROVIDER === "anthropic") {
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
@@ -458,8 +753,9 @@ async function discordSend(channel, text) {
   if (!/^\d+$/.test(channel)) throw new Error("bad_channel");
   if (!channelGuild.has(channel)) {
     const r = await fetch(`https://discord.com/api/v10/channels/${channel}`, { headers: { authorization: `Bot ${DISCORD_BOT_TOKEN}` } });
-    const j = await r.json();
-    channelGuild.set(channel, r.ok ? String(j.guild_id || "") : "");
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`http_${r.status}`); // no se guarda: se reintenta la próxima vez
+    channelGuild.set(channel, String(j.guild_id || ""));
   }
   if (!DISCORD_GUILD_ID || channelGuild.get(channel) !== DISCORD_GUILD_ID) throw new Error("channel_not_allowed");
   const r = await fetch(`https://discord.com/api/v10/channels/${channel}/messages`, {
@@ -490,7 +786,8 @@ function startDiscord() {
       const m = p.d;
       if (m.author?.bot || String(m.guild_id) !== DISCORD_GUILD_ID) return;
       const msg = { t: "discord", ch: String(m.channel_id), user: m.author.global_name || m.author.username, user_id: String(m.author.id), msg: m.content || "" };
-      for (const c of clients.values()) if (c.ready) send(c, msg);
+      // Solo a los juegos que tienen permiso de Discord (antes le llegaba a TODOS los juegos del servidor)
+      for (const c of clients.values()) if (c.ready && canUseService(c, "discord")) send(c, msg);
     }
   });
   gw.on("close", (code) => {
@@ -504,12 +801,26 @@ function startDiscord() {
 // ------------------------------------------------------------------
 // Peticiones con respuesta (orb_db_get, orb_ai, ...)
 // ------------------------------------------------------------------
+// "_..." y "priv_..." -> solo el servidor (plugins) puede leer y escribir
+// "ro_..."  -> los jugadores pueden LEER pero solo el servidor escribe (rankings, tiendas, configuración...)
+// STRICT_DB_WRITE=true -> los jugadores solo pueden leer, en todas las colecciones
 function isProtectedCollection(col) {
-  return STRICT_DB_WRITE || col.startsWith("_") || col.startsWith("priv_");
+  return col.startsWith("_") || col.startsWith("priv_");
+}
+function canClientWrite(col) {
+  return !STRICT_DB_WRITE && !isProtectedCollection(col) && !col.startsWith("ro_");
+}
+function dbWriteCheck(g, col, key, value) {
+  if (jsonSize(value) > MAX_DB_VALUE_BYTES) return "value_too_large";
+  const colObj = peekDb(g)[col];
+  const count = colObj ? Object.keys(colObj).length : 0;
+  if (count >= MAX_DB_DOCS_PER_COLLECTION && !(colObj && Object.prototype.hasOwnProperty.call(colObj, key))) return "collection_full";
+  return "";
 }
 
 async function handleRequest(c, m) {
-  const g = c.gameId;
+  const g = c.gameId;       // salas y objetos del mundo: por versión
+  const dg = c.dbNs || g;   // base de datos: por proyecto
   const col = str(m.c, 64), key = str(m.k, 128);
   switch (m.op) {
     case "join": {
@@ -540,45 +851,54 @@ async function handleRequest(c, m) {
 
     case "db_get": {
       if (!col || !key || isProtectedCollection(col)) return { ok: false, d: "forbidden_or_bad_args" };
-      const colObj = gameDb(g)[col];
+      const colObj = peekDb(dg)[col];
       if (!colObj || !Object.prototype.hasOwnProperty.call(colObj, key)) return { ok: false, d: "not_found" };
       return { ok: true, d: colObj[key] };
     }
-    case "db_set":
+    case "db_set": {
       if (!col || !key || m.v === undefined) return { ok: false, d: "bad_args" };
-      if (isProtectedCollection(col)) return { ok: false, d: "forbidden_collection" };
-      (gameDb(g)[col] ||= {})[key] = m.v;
+      if (!canClientWrite(col)) return { ok: false, d: "forbidden_collection" };
+      const err = dbWriteCheck(dg, col, key, m.v);
+      if (err) return { ok: false, d: err };
+      (gameDb(dg)[col] ||= {})[key] = m.v;
       dirty.db = true;
       return { ok: true, d: "" };
+    }
     case "db_merge": {
       if (!col || !key || !isObj(m.v)) return { ok: false, d: "bad_args" };
-      if (isProtectedCollection(col)) return { ok: false, d: "forbidden_collection" };
-      const colObj = (gameDb(g)[col] ||= {});
-      colObj[key] = { ...(isObj(colObj[key]) ? colObj[key] : {}), ...m.v };
+      if (!canClientWrite(col)) return { ok: false, d: "forbidden_collection" };
+      const prev = isObj(peekDb(dg)[col]?.[key]) ? peekDb(dg)[col][key] : {};
+      const merged = { ...prev, ...cleanKeys(m.v) };
+      const err = dbWriteCheck(dg, col, key, merged);
+      if (err) return { ok: false, d: err };
+      const colObj = (gameDb(dg)[col] ||= {});
+      colObj[key] = merged;
       dirty.db = true;
       return { ok: true, d: colObj[key] };
     }
     case "db_delete":
       if (!col || !key) return { ok: false, d: "bad_args" };
-      if (isProtectedCollection(col)) return { ok: false, d: "forbidden_collection" };
-      if (gameDb(g)[col]) {
-        delete gameDb(g)[col][key];
-        if (!Object.keys(gameDb(g)[col]).length) delete gameDb(g)[col];
+      if (!canClientWrite(col)) return { ok: false, d: "forbidden_collection" };
+      if (peekDb(dg)[col]) {
+        delete gameDb(dg)[col][key];
+        if (!Object.keys(gameDb(dg)[col]).length) delete gameDb(dg)[col];
         dirty.db = true;
       }
       return { ok: true, d: "" };
     case "db_list": {
       if (col) {
         if (isProtectedCollection(col)) return { ok: false, d: "forbidden_collection" };
-        return { ok: true, d: Object.keys(gameDb(g)[col] || {}) };
+        return { ok: true, d: Object.keys(peekDb(dg)[col] || {}) };
       }
-      return { ok: true, d: Object.keys(gameDb(g)).filter((k) => !isProtectedCollection(k)) };
+      return { ok: true, d: Object.keys(peekDb(dg)).filter((k) => !isProtectedCollection(k)) };
     }
 
     case "world_create": {
       const roomId = str(m.rm, 64) || c.roomId;
       if (!roomId || roomId !== c.roomId) return { ok: false, d: "not_in_room" };
       if (!isObj(m.p)) return { ok: false, d: "bad_args" };
+      if (jsonSize(m.p) > MAX_DB_VALUE_BYTES) return { ok: false, d: "value_too_large" };
+      if (Object.keys(peekWorld(g).rooms[roomId] || {}).length >= MAX_WORLD_OBJECTS_PER_ROOM) return { ok: false, d: "room_world_full" };
       const w = gameWorld(g);
       const id = w.next++;
       (w.rooms[roomId] ||= {})[id] = m.p;
@@ -588,7 +908,11 @@ async function handleRequest(c, m) {
     }
 
     case "ai": {
-      if (!allowRate(c, "ai", AI_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
+      if (!AI_API_KEY) return { ok: false, d: "ai_disabled" };
+      if (!canUseService(c, "ai")) return { ok: false, d: "ai_not_allowed" };
+      // Límite por IP (reconectar ya no lo salta) y por clave (todo el juego junto)
+      if (!allowGlobalRate(`ai_ip:${c.ip}`, AI_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
+      if (!allowGlobalRate(`ai_key:${c.apiKeyId}`, AI_KEY_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
       try {
         return { ok: true, d: await callAI(m.msgs, m.temp) };
       } catch (e) {
@@ -596,6 +920,9 @@ async function handleRequest(c, m) {
       }
     }
     case "discord": {
+      if (!DISCORD_BOT_TOKEN) return { ok: false, d: "discord_disabled" };
+      if (!canUseService(c, "discord")) return { ok: false, d: "discord_not_allowed" };
+      if (!allowGlobalRate(`dc_ip:${c.ip}`, DISCORD_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
       if (!allowRate(c, "discord", DISCORD_MAX_PER_MINUTE)) return { ok: false, d: "rate_limited" };
       try {
         await discordSend(m.ch, m.msg);
@@ -652,14 +979,22 @@ function onMessage(c, raw) {
     }
 
     const rawGame = safeKey(m.game, 64) || "default";
-    const scopedGameId =
-      keyInfo.keyId === "master"
-        ? rawGame
-        : `k_${keyInfo.keyId.slice(0, 8)}_${rawGame}`;
+    let scopedGameId = rawGame, projectId = "";
+    if (keyInfo.keyId !== "master") {
+      projectId = keyInfo.projectId;
+      if (!projectId || !projectsRegistry[projectId]) {
+        send(c, { t: "err", code: "bad_key", msg: "La clave no pertenece a ningún proyecto" });
+        return c.ws.close();
+      }
+      scopedGameId = `${projectId}_${rawGame}`; // ORB_GAME_ID = versión o modo dentro del proyecto
+    }
 
     c.ready = true;
     c.apiKeyId = keyInfo.keyId;
+    c.projectId = projectId;
+    c.channel = rawGame;
     c.gameId = scopedGameId;
+    c.dbNs = projectId || scopedGameId;
     c.game = getGame(c.gameId);
     getGameModule(c.gameId);
     send(c, { t: "welcome", id: c.id, time: Date.now(), proto: PROTOCOL });
@@ -680,13 +1015,20 @@ function onMessage(c, raw) {
       const out = { t: "st", id: c.id };
       let any = false;
       if (isObj(m.s)) {
-        c.state = { ...c.state, ...m.s };
-        out.s = m.s;
+        const s = cleanKeys(m.s, MAX_STATE_KEYS);
+        c.state = cleanKeys({ ...c.state, ...s }, MAX_STATE_KEYS);
+        out.s = s;
         any = true;
       }
       if (isObj(m.e)) {
-        for (const [k, v] of Object.entries(m.e)) if (isObj(v)) c.entities[k] = v;
-        out.e = m.e;
+        const e = {};
+        for (const [k, v] of Object.entries(m.e)) {
+          if (FORBIDDEN_KEYS.has(k) || !isObj(v)) continue;
+          if (!Object.prototype.hasOwnProperty.call(c.entities, k) && Object.keys(c.entities).length >= MAX_ENTITIES_PER_PLAYER) continue;
+          c.entities[k] = v;
+          e[k] = v;
+        }
+        out.e = e;
         any = true;
       }
       if (Array.isArray(m.d) && m.d.length) {
@@ -705,8 +1047,9 @@ function onMessage(c, raw) {
       if (m.to === "room") { if (c.roomId) sendRoom(c.game, c.roomId, msg, c.id); }
       else if (m.to === "all") { if (c.roomId) sendRoom(c.game, c.roomId, msg); else send(c, msg); }
       else {
+        // Solo a alguien de TU sala (antes podías escribirle a cualquiera del juego adivinando su id)
         const target = clients.get(Number(m.to));
-        if (target && target.gameId === c.gameId) send(target, msg);
+        if (target && target.gameId === c.gameId && c.roomId && target.roomId === c.roomId) send(target, msg);
       }
       break;
     }
@@ -719,7 +1062,7 @@ function onMessage(c, raw) {
       if (!c.roomId) break;
       const id = String(Number(m.id));
       const roomId = findWorldRoom(c.gameId, id);
-      if (!roomId || roomId !== c.roomId || !isObj(m.p)) break;
+      if (!roomId || roomId !== c.roomId || !isObj(m.p) || jsonSize(m.p) > MAX_DB_VALUE_BYTES) break;
       gameWorld(c.gameId).rooms[roomId][id] = m.p;
       dirty.world = true;
       sendRoom(c.game, roomId, { t: "world", id: Number(id), p: m.p });
@@ -777,61 +1120,83 @@ const MIME_TYPES = {
   ".yyz": "application/octet-stream",
 };
 
-function sendJson(res, status, data) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  });
-  res.end(JSON.stringify(data));
+// CORS: "*" solo para /health. El panel (/api) se usa desde el mismo servidor, así que no lo necesita,
+// salvo que pongas CORS_ORIGIN (ej. "https://mi-panel.com").
+function sendJson(res, status, data, cors = CORS_ORIGIN) {
+  const headers = { "Content-Type": "application/json; charset=utf-8" };
+  if (cors) {
+    headers["Access-Control-Allow-Origin"] = cors;
+    headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+  }
+  res.writeHead(status, headers);
+  res.end(status === 204 ? undefined : JSON.stringify(data));
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let done = false;
     req.on("data", (chunk) => {
+      if (done) return;
       body += chunk;
-      if (body.length > 1024 * 1024) reject(new Error("payload_too_large"));
+      if (body.length > 1024 * 1024) { done = true; req.destroy(); reject(new Error("payload_too_large")); }
     });
-    req.on("end", () => resolve(safeJSON(body, {})));
+    req.on("end", () => {
+      if (done) return;
+      const v = safeJSON(body, {});
+      resolve(isObj(v) ? v : {}); // antes "null" reventaba con error 500
+    });
     req.on("error", reject);
   });
 }
 
-function getBearerToken(req, urlObj) {
+// El token va SOLO en la cabecera Authorization (en la URL se puede quedar guardado en logs)
+function getBearerToken(req) {
   const authHeader = req.headers.authorization || "";
-  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7);
-  return urlObj.searchParams.get("token") || "";
+  return authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 }
 
-function isAdminAuthorized(req, urlObj) {
-  const token = getBearerToken(req, urlObj);
-  return ADMIN_TOKEN && token === ADMIN_TOKEN;
+function isAdminAuthorized(req) {
+  const token = getBearerToken(req);
+  return Boolean(ADMIN_TOKEN) && safeEqual(token, ADMIN_TOKEN);
 }
 
-function getDevUser(req, urlObj) {
-  const token = getBearerToken(req, urlObj);
-  const userId = devSessions.get(token);
-  if (!userId || !usersRegistry[userId]) return null;
-  return { id: userId, ...usersRegistry[userId] };
+function getDevUser(req) {
+  const token = getBearerToken(req);
+  const sess = devSessions.get(token);
+  if (!sess) return null;
+  if (Date.now() > sess.expires || !usersRegistry[sess.userId]) { devSessions.delete(token); return null; }
+  return { id: sess.userId, ...usersRegistry[sess.userId] };
 }
+function newDevSession(userId) {
+  const token = crypto.randomBytes(24).toString("hex");
+  devSessions.set(token, { userId, expires: Date.now() + DEV_SESSION_TTL_MS });
+  return token;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [t, sess] of devSessions) if (now > sess.expires) devSessions.delete(t);
+}, 3600 * 1000).unref();
 
 async function handleHttp(req, res) {
-  if (req.method === "OPTIONS") return sendJson(res, 204, {});
-  const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const urlObj = new URL(req.url, "http://localhost");
   const pathname = urlObj.pathname;
+  if (req.method === "OPTIONS") return sendJson(res, 204, {}, pathname === "/health" || pathname === "/status" ? "*" : CORS_ORIGIN);
 
-  // Endpoint público de salud
+  // Endpoint público de salud (ya no muestra la lista de juegos: eso solo lo ve el admin)
   if (pathname === "/health" || pathname === "/status") {
-    const perGame = {};
-    for (const c of clients.values()) if (c.ready) perGame[c.gameId] = (perGame[c.gameId] || 0) + 1;
-    return sendJson(res, 200, { server: "Orbita", protocol: PROTOCOL, players: clients.size, games: perGame });
+    return sendJson(res, 200, { server: "Orbita", protocol: PROTOCOL, players: clients.size }, "*");
   }
 
   // ------------------------------------------------------------------
   // Portal Publico de Desarrolladores (/api/dev/...)
   // ------------------------------------------------------------------
+  const isAuthRoute = (pathname === "/api/dev/register" || pathname === "/api/dev/login") && req.method === "POST";
+  if (isAuthRoute && !allowGlobalRate(`auth:${clientIp(req)}`, AUTH_MAX_PER_MINUTE)) {
+    return sendJson(res, 429, { ok: false, error: "Demasiados intentos. Espera un minuto." });
+  }
+
   if (pathname === "/api/dev/register" && req.method === "POST") {
     const body = await readBody(req);
     const name = str(body.name, 48).trim();
@@ -841,8 +1206,8 @@ async function handleHttp(req, res) {
     if (!name || !email || !email.includes("@")) {
       return sendJson(res, 400, { ok: false, error: "Ingresa un nombre y correo valido." });
     }
-    if (password.length < 6) {
-      return sendJson(res, 400, { ok: false, error: "La contraseña debe tener al menos 6 caracteres." });
+    if (password.length < 6 || password.length > 128) {
+      return sendJson(res, 400, { ok: false, error: "La contraseña debe tener entre 6 y 128 caracteres." });
     }
     const exists = Object.values(usersRegistry).some((u) => u.email === email);
     if (exists) {
@@ -855,46 +1220,118 @@ async function handleHttp(req, res) {
       name,
       email,
       salt,
-      passHash: hashPassword(password, salt),
+      passHash: await hashPassword(password, salt),
       createdAt: new Date().toISOString(),
     };
     dirty.users = true;
 
-    const sessionToken = crypto.randomBytes(24).toString("hex");
-    devSessions.set(sessionToken, userId);
+    const sessionToken = newDevSession(userId);
     return sendJson(res, 200, { ok: true, token: sessionToken, user: { id: userId, name, email } });
   }
 
   if (pathname === "/api/dev/login" && req.method === "POST") {
     const body = await readBody(req);
     const email = str(body.email, 96).trim().toLowerCase();
-    const password = String(body.password || "");
+    const password = String(body.password || "").slice(0, 128);
 
     const entry = Object.entries(usersRegistry).find(([, u]) => u.email === email);
     if (!entry) return sendJson(res, 401, { ok: false, error: "Correo o contraseña incorrectos." });
 
     const [userId, user] = entry;
-    if (hashPassword(password, user.salt) !== user.passHash) {
+    if (!safeEqual(await hashPassword(password, user.salt), user.passHash)) {
       return sendJson(res, 401, { ok: false, error: "Correo o contraseña incorrectos." });
     }
 
-    const sessionToken = crypto.randomBytes(24).toString("hex");
-    devSessions.set(sessionToken, userId);
+    const sessionToken = newDevSession(userId);
     return sendJson(res, 200, { ok: true, token: sessionToken, user: { id: userId, name: user.name, email: user.email } });
   }
 
   if (pathname.startsWith("/api/dev/")) {
-    const user = getDevUser(req, urlObj);
+    const user = getDevUser(req);
     if (!user) return sendJson(res, 401, { ok: false, error: "Sesion expirada. Inicia sesion nuevamente." });
 
-    // GET /api/dev/keys -> Listar keys del desarrollador
+    // ---------------- Proyectos ----------------
+    const isMine = (pid) => projectsRegistry[pid] && projectsRegistry[pid].userId === user.id;
+    const myProjects = () => Object.keys(projectsRegistry).filter(isMine);
+
+    // GET /api/dev/me
+    if (pathname === "/api/dev/me" && req.method === "GET") {
+      return sendJson(res, 200, { ok: true, user: { id: user.id, name: user.name, email: user.email } });
+    }
+
+    // GET /api/dev/projects -> lista de proyectos con números en vivo
+    if (pathname === "/api/dev/projects" && req.method === "GET") {
+      const list = myProjects().map((pid) => projectSummary(pid));
+      return sendJson(res, 200, { ok: true, user: { name: user.name, email: user.email }, projects: list });
+    }
+
+    // POST /api/dev/projects {name} -> crea el proyecto con 2 claves: Desarrollo y Publicado
+    if (pathname === "/api/dev/projects" && req.method === "POST") {
+      const body = await readBody(req);
+      const name = str(body.name || body.projectName || "Mi Juego", 48).trim() || "Mi Juego";
+      if (myProjects().length >= MAX_PROJECTS_PER_DEV) {
+        return sendJson(res, 400, { ok: false, error: `Máximo ${MAX_PROJECTS_PER_DEV} proyectos por cuenta.` });
+      }
+      const pid = createProject(name, user);
+      createKey(pid, "Desarrollo", user);
+      createKey(pid, "Publicado", user);
+      return sendJson(res, 200, { ok: true, project: projectDetail(pid, true) });
+    }
+
+    const projMatch = pathname.match(/^\/api\/dev\/projects\/([^/]+)(?:\/([a-z]+))?$/);
+    if (projMatch) {
+      const pid = safeKey(decodeURIComponent(projMatch[1]));
+      const sub = projMatch[2] || "";
+      if (!isMine(pid)) return sendJson(res, 404, { ok: false, error: "Proyecto no encontrado" });
+
+      if (!sub && req.method === "GET") return sendJson(res, 200, { ok: true, project: projectDetail(pid, true) });
+
+      if (!sub && req.method === "PUT") {
+        const body = await readBody(req);
+        const name = str(body.name, 48).trim();
+        if (name) { projectsRegistry[pid].name = name; dirty.projects = true; }
+        return sendJson(res, 200, { ok: true, project: projectSummary(pid) });
+      }
+
+      if (!sub && req.method === "DELETE") {
+        deleteProject(pid);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      // POST /api/dev/projects/:id/keys {label}
+      if (sub === "keys" && req.method === "POST") {
+        const body = await readBody(req);
+        if (projectKeys(pid).length >= MAX_KEYS_PER_PROJECT) {
+          return sendJson(res, 400, { ok: false, error: `Máximo ${MAX_KEYS_PER_PROJECT} claves por proyecto.` });
+        }
+        const uuid = createKey(pid, str(body.label || "Clave", 32).trim() || "Clave", user);
+        return sendJson(res, 200, { ok: true, uuid });
+      }
+
+      // POST /api/dev/projects/:id/request {service: "ai"|"discord"} -> pedir acceso al admin
+      if (sub === "request" && req.method === "POST") {
+        const body = await readBody(req);
+        const service = body.service === "ai" ? "ai" : body.service === "discord" ? "discord" : "";
+        if (!service) return sendJson(res, 400, { ok: false, error: "Servicio inválido" });
+        const p = projectsRegistry[pid];
+        p.requests = { ...(isObj(p.requests) ? p.requests : {}), [service]: new Date().toISOString() };
+        dirty.projects = true;
+        return sendJson(res, 200, { ok: true });
+      }
+      return sendJson(res, 404, { ok: false, error: "not_found" });
+    }
+
+    // ---------------- Claves ----------------
+    // GET /api/dev/keys -> todas mis claves (compatibilidad con el panel viejo)
     if (pathname === "/api/dev/keys" && req.method === "GET") {
       const myKeys = Object.entries(keysRegistry)
-        .filter(([, info]) => info.userId === user.id)
+        .filter(([, info]) => isMine(info.projectId))
         .map(([uuid, info]) => ({
           uuid,
-          prefix: `k_${uuid.slice(0, 8)}_`,
-          projectName: info.projectName || "Mi Juego",
+          prefix: info.projectId,
+          projectId: info.projectId,
+          projectName: projectsRegistry[info.projectId].name,
+          label: info.label || "Clave",
           active: info.active !== false,
           onlineNow: countActivePlayersByKey(uuid),
           createdAt: info.createdAt || null,
@@ -902,32 +1339,49 @@ async function handleHttp(req, res) {
       return sendJson(res, 200, { ok: true, user: { name: user.name, email: user.email }, keys: myKeys });
     }
 
-    // POST /api/dev/keys -> Crear nueva key gratuita ilimitada
+    // POST /api/dev/keys {projectName} -> (compatibilidad) crea un proyecto con una clave
     if (pathname === "/api/dev/keys" && req.method === "POST") {
       const body = await readBody(req);
-      const projectName = str(body.projectName || "Mi Juego", 48).trim() || "Mi Juego";
-      const uuid = crypto.randomUUID();
-      keysRegistry[uuid] = {
-        userId: user.id,
-        owner: `${user.name} (${user.email})`,
-        projectName,
-        active: true,
-        createdAt: new Date().toISOString(),
-      };
-      dirty.keys = true;
-      return sendJson(res, 200, { ok: true, uuid, data: keysRegistry[uuid] });
+      const name = str(body.projectName || "Mi Juego", 48).trim() || "Mi Juego";
+      if (myProjects().length >= MAX_PROJECTS_PER_DEV) {
+        return sendJson(res, 400, { ok: false, error: `Máximo ${MAX_PROJECTS_PER_DEV} proyectos por cuenta.` });
+      }
+      const pid = createProject(name, user);
+      const uuid = createKey(pid, "Principal", user);
+      return sendJson(res, 200, { ok: true, uuid, projectId: pid, data: keysRegistry[uuid] });
     }
 
-    // DELETE /api/dev/keys/:uuid -> Borrar key propia
-    const devKeyMatch = pathname.match(/^\/api\/dev\/keys\/([^/]+)$/);
-    if (devKeyMatch && req.method === "DELETE") {
+    const devKeyMatch = pathname.match(/^\/api\/dev\/keys\/([^/]+?)(?:\/(rotate))?$/);
+    if (devKeyMatch) {
       const uuid = decodeURIComponent(devKeyMatch[1]);
-      if (!keysRegistry[uuid] || keysRegistry[uuid].userId !== user.id) {
-        return sendJson(res, 404, { ok: false, error: "Key no encontrada" });
+      const info = keysRegistry[uuid];
+      if (!info || !isMine(info.projectId)) return sendJson(res, 404, { ok: false, error: "Clave no encontrada" });
+
+      // PUT /api/dev/keys/:uuid {active, label} -> pausar / reanudar / renombrar
+      if (!devKeyMatch[2] && req.method === "PUT") {
+        const body = await readBody(req);
+        if (body.active !== undefined) info.active = Boolean(body.active);
+        if (body.label !== undefined) info.label = str(body.label, 32).trim() || info.label;
+        dirty.keys = true;
+        if (info.active === false) disconnectKey(uuid);
+        return sendJson(res, 200, { ok: true });
       }
-      delete keysRegistry[uuid];
-      dirty.keys = true;
-      return sendJson(res, 200, { ok: true });
+      // POST /api/dev/keys/:uuid/rotate -> cambia la clave por una nueva (los datos no se pierden)
+      if (devKeyMatch[2] === "rotate" && req.method === "POST") {
+        const fresh = newKeyUuid();
+        keysRegistry[fresh] = { ...info, createdAt: new Date().toISOString() };
+        delete keysRegistry[uuid];
+        dirty.keys = true;
+        disconnectKey(uuid);
+        return sendJson(res, 200, { ok: true, uuid: fresh });
+      }
+      // DELETE /api/dev/keys/:uuid
+      if (!devKeyMatch[2] && req.method === "DELETE") {
+        delete keysRegistry[uuid];
+        dirty.keys = true;
+        disconnectKey(uuid);
+        return sendJson(res, 200, { ok: true });
+      }
     }
 
     // GET /api/dev/overview -> Salas activas y juegos conocidos únicamente de este desarrollador
@@ -980,9 +1434,9 @@ async function handleHttp(req, res) {
       const key = devDbMatch[3] ? str(decodeURIComponent(devDbMatch[3]), 128) : "";
 
       if (req.method === "GET") {
-        if (!col) return sendJson(res, 200, { ok: true, data: gameDb(g) });
-        if (!key) return sendJson(res, 200, { ok: true, data: gameDb(g)[col] || {} });
-        return sendJson(res, 200, { ok: true, data: (gameDb(g)[col] || {})[key] ?? null });
+        if (!col) return sendJson(res, 200, { ok: true, data: peekDb(g) });
+        if (!key) return sendJson(res, 200, { ok: true, data: peekDb(g)[col] || {} });
+        return sendJson(res, 200, { ok: true, data: (peekDb(g)[col] || {})[key] ?? null });
       }
       if (req.method === "PUT" && col && key) {
         const body = await readBody(req);
@@ -1010,7 +1464,7 @@ async function handleHttp(req, res) {
 
       const roomId = devWorldMatch[2] ? str(decodeURIComponent(devWorldMatch[2]), 64) : "";
       const objId = devWorldMatch[3] ? String(Number(decodeURIComponent(devWorldMatch[3]))) : "";
-      const w = gameWorld(g);
+      const w = req.method === "GET" ? peekWorld(g) : gameWorld(g);
 
       if (req.method === "GET") {
         if (!roomId) return sendJson(res, 200, { ok: true, data: w.rooms });
@@ -1021,10 +1475,23 @@ async function handleHttp(req, res) {
         const body = await readBody(req);
         const props = body.props !== undefined ? body.props : body;
         if (!isObj(props)) return sendJson(res, 400, { ok: false, error: "bad_props" });
+        if (!Number.isFinite(Number(objId))) return sendJson(res, 400, { ok: false, error: "bad_id" });
         (w.rooms[roomId] ||= {})[objId] = props;
+        if (Number(objId) >= w.next) w.next = Number(objId) + 1; // que el juego no repita ese id después
         dirty.world = true;
         sendRoom(getGame(g), roomId, { t: "world", id: Number(objId), p: props });
         return sendJson(res, 200, { ok: true });
+      }
+      // POST .../world/:juego/:sala -> crea un objeto nuevo con el siguiente id
+      if (req.method === "POST" && roomId && !objId) {
+        const body = await readBody(req);
+        const props = body.props !== undefined ? body.props : body;
+        if (!isObj(props)) return sendJson(res, 400, { ok: false, error: "bad_props" });
+        const id = w.next++;
+        (w.rooms[roomId] ||= {})[id] = props;
+        dirty.world = true;
+        sendRoom(getGame(g), roomId, { t: "world", id, p: props });
+        return sendJson(res, 200, { ok: true, id });
       }
       if (req.method === "DELETE" && roomId && objId) {
         if (w.rooms[roomId]) {
@@ -1036,13 +1503,15 @@ async function handleHttp(req, res) {
         return sendJson(res, 200, { ok: true });
       }
     }
+    return sendJson(res, 404, { ok: false, error: "not_found" });
   }
 
   // ------------------------------------------------------------------
   // Rutas protegidas de administracion (/api/admin/...)
   // ------------------------------------------------------------------
   if (pathname.startsWith("/api/admin")) {
-    if (!isAdminAuthorized(req, urlObj)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
+    if (!ADMIN_TOKEN) return sendJson(res, 503, { ok: false, error: "admin_disabled: pon la variable ADMIN_TOKEN en el servidor" });
+    if (!isAdminAuthorized(req)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
 
     if (pathname === "/api/admin/overview" && req.method === "GET") {
       const gameList = {};
@@ -1088,8 +1557,10 @@ async function handleHttp(req, res) {
       if (req.method === "GET") {
         const list = Object.entries(keysRegistry).map(([uuid, info]) => ({
           uuid,
-          owner: info.owner || "Admin",
-          projectName: info.projectName || "Sin nombre",
+          owner: projectsRegistry[info.projectId]?.owner || info.owner || "Admin",
+          projectId: info.projectId || "",
+          projectName: projectsRegistry[info.projectId]?.name || info.projectName || "Sin nombre",
+          label: info.label || "",
           active: info.active !== false,
           onlineNow: countActivePlayersByKey(uuid),
           createdAt: info.createdAt || null,
@@ -1098,17 +1569,41 @@ async function handleHttp(req, res) {
       }
       if (req.method === "POST") {
         const body = await readBody(req);
-        const owner = str(body.owner || "Admin", 48) || "Admin";
-        const projectName = str(body.projectName || owner, 48) || "Proyecto";
-        const uuid = crypto.randomUUID();
-        keysRegistry[uuid] = {
-          owner,
-          projectName,
-          active: true,
-          createdAt: new Date().toISOString(),
-        };
-        dirty.keys = true;
-        return sendJson(res, 200, { ok: true, uuid, data: keysRegistry[uuid] });
+        let pid = safeKey(body.projectId);
+        if (!pid || !projectsRegistry[pid]) {
+          const projectName = str(body.projectName || body.owner || "Proyecto", 48) || "Proyecto";
+          pid = createProject(projectName, null);
+        }
+        const uuid = createKey(pid, str(body.label || "Principal", 32) || "Principal", null);
+        return sendJson(res, 200, { ok: true, uuid, projectId: pid, data: keysRegistry[uuid] });
+      }
+    }
+
+    // GET /api/admin/projects -> todos los proyectos (con pedidos de IA / Discord)
+    if (pathname === "/api/admin/projects" && req.method === "GET") {
+      return sendJson(res, 200, { ok: true, projects: Object.keys(projectsRegistry).map((pid) => projectSummary(pid)) });
+    }
+    const admProjMatch = pathname.match(/^\/api\/admin\/projects\/([^/]+)$/);
+    if (admProjMatch) {
+      const pid = safeKey(decodeURIComponent(admProjMatch[1]));
+      if (!projectsRegistry[pid]) return sendJson(res, 404, { ok: false, error: "project_not_found" });
+      if (req.method === "GET") return sendJson(res, 200, { ok: true, project: projectDetail(pid, true) });
+      if (req.method === "PUT") {
+        const body = await readBody(req);
+        const p = projectsRegistry[pid];
+        for (const service of ["ai", "discord"]) {
+          if (typeof body[service] === "boolean") {
+            p[service] = body[service];
+            if (isObj(p.requests)) delete p.requests[service];
+          }
+        }
+        if (typeof body.name === "string" && body.name.trim()) p.name = str(body.name, 48).trim();
+        dirty.projects = true;
+        return sendJson(res, 200, { ok: true, project: projectSummary(pid) });
+      }
+      if (req.method === "DELETE") {
+        deleteProject(pid);
+        return sendJson(res, 200, { ok: true });
       }
     }
 
@@ -1120,12 +1615,17 @@ async function handleHttp(req, res) {
       if (req.method === "PUT") {
         const body = await readBody(req);
         if (body.active !== undefined) keysRegistry[uuid].active = Boolean(body.active);
+        // Permisos por clave para usar TU IA / TU bot de Discord
+        if (typeof body.ai === "boolean") keysRegistry[uuid].ai = body.ai;
+        if (typeof body.discord === "boolean") keysRegistry[uuid].discord = body.discord;
         dirty.keys = true;
+        if (keysRegistry[uuid].active === false) disconnectKey(uuid);
         return sendJson(res, 200, { ok: true, data: keysRegistry[uuid] });
       }
       if (req.method === "DELETE") {
         delete keysRegistry[uuid];
         dirty.keys = true;
+        disconnectKey(uuid);
         return sendJson(res, 200, { ok: true });
       }
     }
@@ -1138,9 +1638,9 @@ async function handleHttp(req, res) {
       const key = dbMatch[3] ? str(decodeURIComponent(dbMatch[3]), 128) : "";
 
       if (req.method === "GET") {
-        if (!col) return sendJson(res, 200, { ok: true, data: gameDb(g) });
-        if (!key) return sendJson(res, 200, { ok: true, data: gameDb(g)[col] || {} });
-        return sendJson(res, 200, { ok: true, data: (gameDb(g)[col] || {})[key] ?? null });
+        if (!col) return sendJson(res, 200, { ok: true, data: peekDb(g) });
+        if (!key) return sendJson(res, 200, { ok: true, data: peekDb(g)[col] || {} });
+        return sendJson(res, 200, { ok: true, data: (peekDb(g)[col] || {})[key] ?? null });
       }
       if (req.method === "PUT" && col && key) {
         const body = await readBody(req);
@@ -1166,7 +1666,7 @@ async function handleHttp(req, res) {
       const g = safeKey(decodeURIComponent(worldMatch[1]));
       const roomId = worldMatch[2] ? str(decodeURIComponent(worldMatch[2]), 64) : "";
       const objId = worldMatch[3] ? String(Number(decodeURIComponent(worldMatch[3]))) : "";
-      const w = gameWorld(g);
+      const w = req.method === "GET" ? peekWorld(g) : gameWorld(g);
 
       if (req.method === "GET") {
         if (!roomId) return sendJson(res, 200, { ok: true, data: w.rooms });
@@ -1177,10 +1677,23 @@ async function handleHttp(req, res) {
         const body = await readBody(req);
         const props = body.props !== undefined ? body.props : body;
         if (!isObj(props)) return sendJson(res, 400, { ok: false, error: "bad_props" });
+        if (!Number.isFinite(Number(objId))) return sendJson(res, 400, { ok: false, error: "bad_id" });
         (w.rooms[roomId] ||= {})[objId] = props;
+        if (Number(objId) >= w.next) w.next = Number(objId) + 1; // que el juego no repita ese id después
         dirty.world = true;
         sendRoom(getGame(g), roomId, { t: "world", id: Number(objId), p: props });
         return sendJson(res, 200, { ok: true });
+      }
+      // POST .../world/:juego/:sala -> crea un objeto nuevo con el siguiente id
+      if (req.method === "POST" && roomId && !objId) {
+        const body = await readBody(req);
+        const props = body.props !== undefined ? body.props : body;
+        if (!isObj(props)) return sendJson(res, 400, { ok: false, error: "bad_props" });
+        const id = w.next++;
+        (w.rooms[roomId] ||= {})[id] = props;
+        dirty.world = true;
+        sendRoom(getGame(g), roomId, { t: "world", id, p: props });
+        return sendJson(res, 200, { ok: true, id });
       }
       if (req.method === "DELETE" && roomId && objId) {
         if (w.rooms[roomId]) {
@@ -1213,8 +1726,12 @@ async function handleHttp(req, res) {
   }
 
   // Archivos estáticos del Panel Web (./public)
-  let filePath = path.join(PUBLIC_DIR, pathname === "/" ? "index.html" : pathname);
-  if (!filePath.startsWith(PUBLIC_DIR)) return sendJson(res, 403, { error: "forbidden" });
+  if (pathname.startsWith("/api/")) return sendJson(res, 404, { ok: false, error: "not_found" });
+  let relPath;
+  try { relPath = decodeURIComponent(pathname === "/" ? "/index.html" : pathname); } catch { return sendJson(res, 400, { error: "bad_path" }); }
+  const filePath = path.resolve(PUBLIC_DIR, "." + relPath);
+  const rel = path.relative(path.resolve(PUBLIC_DIR), filePath);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return sendJson(res, 403, { error: "forbidden" });
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
@@ -1222,9 +1739,8 @@ async function handleHttp(req, res) {
     return fs.createReadStream(filePath).pipe(res);
   }
 
-  const perGame = {};
-  for (const c of clients.values()) if (c.ready) perGame[c.gameId] = (perGame[c.gameId] || 0) + 1;
-  sendJson(res, 200, { server: "Orbita", protocol: PROTOCOL, players: clients.size, games: perGame });
+  // Cualquier otra ruta: info básica (sirve como "health check" de los hostings)
+  sendJson(res, 200, { server: "Orbita", protocol: PROTOCOL, players: clients.size });
 }
 
 const httpServer = http.createServer((req, res) => {
@@ -1239,20 +1755,33 @@ const httpServer = http.createServer((req, res) => {
 // ------------------------------------------------------------------
 const wss = new WebSocketServer({ server: httpServer, perMessageDeflate: false, maxPayload: 256 * 1024 });
 
-wss.on("connection", (ws) => {
+const connPerIp = new Map();
+wss.on("connection", (ws, req) => {
+  const ip = clientIp(req);
+  const n = (connPerIp.get(ip) || 0) + 1;
+  if (n > MAX_CONN_PER_IP) {
+    try { ws.send(JSON.stringify({ t: "err", code: "too_many_connections", msg: "Demasiadas conexiones desde tu red" })); } catch {}
+    return ws.close();
+  }
+  connPerIp.set(ip, n);
   const c = {
-    id: nextId++, ws, ready: false, apiKeyId: "", gameId: "", game: null,
+    id: nextId++, ws, ip, ready: false, apiKeyId: "", gameId: "", game: null,
     roomId: "", slot: -1, queue: null,
     state: {}, entities: {}, pdata: {},
     lastPing: Date.now(), rate: {}, rateWindow: Date.now(), rateCount: 0,
   };
   clients.set(c.id, c);
+  // Si no manda "hello" a tiempo, se cierra (para que nadie acapare conexiones sin entrar)
+  const helloTimer = setTimeout(() => { if (!c.ready) ws.close(); }, HELLO_TIMEOUT_MS);
   ws.isAlive = true;
   ws.on("pong", () => (ws.isAlive = true));
   ws.on("message", (raw) => {
     try { onMessage(c, raw); } catch (e) { log(`Error con el mensaje de ${c.id}:`, e.message); }
   });
   ws.on("close", () => {
+    clearTimeout(helloTimer);
+    const left = (connPerIp.get(ip) || 1) - 1;
+    if (left > 0) connPerIp.set(ip, left); else connPerIp.delete(ip);
     if (c.ready) {
       leaveRoom(c, false);
       runScript(c.gameId, "onDisconnect", c);
@@ -1280,6 +1809,8 @@ setInterval(() => {
 httpServer.listen(PORT, () => {
   log(`Órbita escuchando en el puerto ${PORT} (protocolo ${PROTOCOL})`);
   log(`Módulos de juego en: ${GAMES_DIR} | Panel web en: ${PUBLIC_DIR}`);
+  if (!ADMIN_TOKEN) log("AVISO: no hay ADMIN_TOKEN -> el panel de admin está apagado. Ponlo para usarlo.");
+  if (!GAME_KEY) log("AVISO: no hay GAME_KEY -> solo entran juegos con claves de desarrollador.");
   log(`IA: ${AI_API_KEY ? `${AI_PROVIDER} / ${AI_MODEL}` : "desactivada"} | Discord: ${DISCORD_BOT_TOKEN ? "activado" : "desactivado"} | Modo 100% Gratuito`);
   startDiscord();
 });

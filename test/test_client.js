@@ -3,11 +3,11 @@ const { spawn } = require("child_process");
 const path = require("path"), fs = require("fs"), os = require("os");
 const Orb = require("./client_mirror");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const PORT = 3996;
+const PORT = 3994;
 let pass = 0, fail = 0;
 const ok = (c, msg) => { c ? pass++ : fail++; console.log((c ? "  OK   " : "  FALLA") + "  " + msg); };
 const startServer = () => spawn(process.execPath, [path.join(__dirname, "..", "server.js")],
-  { env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir }, stdio: "ignore" });
+  { env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GAME_KEY: "clave_de_prueba" }, stdio: "ignore" });
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "orbita-c-"));
 
 (async () => {

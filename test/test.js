@@ -6,10 +6,12 @@ const os = require("os");
 const WebSocket = require("ws");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PORT = 3997;
+const TEST_KEY = "clave_de_prueba";
+const TEST_KEY_MD5 = require("crypto").createHash("md5").update(TEST_KEY, "utf8").digest("hex");
 let pass = 0, fail = 0;
 const ok = (c, msg) => { c ? pass++ : fail++; console.log((c ? "  OK   " : "  FALLA") + "  " + msg); };
 
-function client(game = "Prueba", key = "") {
+function client(game = "Prueba", key = TEST_KEY_MD5) {
   return new Promise((resolve) => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
     const c = { ws, log: [], id: -1, r: 1, pending: {} };
@@ -31,7 +33,7 @@ function client(game = "Prueba", key = "") {
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "orbita-"));
-  const env = { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GAME_KEY: "" };
+  const env = { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GAME_KEY: TEST_KEY };
   const srv = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], { env, stdio: "ignore" });
   await sleep(700);
   try {

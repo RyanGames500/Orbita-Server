@@ -3,7 +3,8 @@
 const WebSocket = require("ws");
 
 class OrbMirror {
-  constructor(port, game = "Prueba") {
+  constructor(port, game = "Prueba", key = process.env.ORB_TEST_KEY || "clave_de_prueba") {
+    this.key = key ? require("crypto").createHash("md5").update(key, "utf8").digest("hex") : ""; // igual que md5_string_utf8 en GML
     this.port = port; this.game = game;
     // __orb_init
     Object.assign(this, {
@@ -35,7 +36,7 @@ class OrbMirror {
   _open() {
     this.status = "connecting";
     this.socket = new WebSocket(`ws://127.0.0.1:${this.port}`);
-    this.socket.on("open", () => this._send({ t: "hello", proto: 1, game: this.game, key: "" }));
+    this.socket.on("open", () => this._send({ t: "hello", proto: 1, game: this.game, key: this.key }));
     this.socket.on("message", (raw) => { let m; try { m = JSON.parse(raw); } catch { return; } if (m && typeof m.t === "string") this._handle(m); });
     this.socket.on("close", () => { if (!this._closingByMe) this._lost("server_closed"); });
   }
