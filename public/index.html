@@ -312,6 +312,7 @@ const mask = (uuid) => uuid.slice(0, 13) + "-••••-••••-•••
 const LOGO = `<svg width="32" height="32" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="6" fill="#5EE6D0"></circle><ellipse cx="17" cy="17" rx="15" ry="7" fill="none" stroke="#8B7CFF" stroke-width="1.6" transform="rotate(-24 17 17)"></ellipse></svg>`;
 const ICON_ORBIT = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8B7CFF" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-25 12 12)"></ellipse></svg>`;
 const ICON_INFO = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8B7CFF" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16v.5"></path></svg>`;
+const LOCK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F2C879" stroke-width="2.2" stroke-linecap="round" role="img" aria-label="Con contraseña" style="flex:none"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 018 0v3"></path></svg>`;
 const CHEV_DOWN = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#93A0BD" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
 const SDK_ZIP = "/sdk/Orbita_Proyecto_Base.zip";
 
@@ -707,7 +708,7 @@ function tabResumen(P) {
 // ---------------------------------------------------------------------
 function playerName(p) {
   const s = p.state || {};
-  return s.nombre || s.name || s.nick || "—";
+  return s.nombre || s.name || s.nick || p.name || "—";
 }
 async function tabSalas(P) {
   const sel = (S.sel[P.id] ||= {});
@@ -722,8 +723,11 @@ async function tabSalas(P) {
       <div class="tree-group">${CHEV_DOWN}Versión <span class="tag tag-v" style="margin:0">${esc(c.gameId)}</span><span class="n">${c.rooms.length}</span></div>
       ${c.rooms.length ? c.rooms.map((r) => {
         const on = cur && cur.ns === c.ns && cur.room.id === r.id;
+        const nm = r.props && r.props.nombre ? String(r.props.nombre) : "";
         return `<button type="button" class="tree-item ${on ? "on" : ""}" data-act="pick-room" data-ns="${esc(c.ns)}" data-room="${esc(r.id)}" ${on ? 'aria-current="true"' : ""}>
-          <span class="dot on"></span><span class="nm">${esc(r.id)}</span><span class="n">${r.players.length}${r.max ? "/" + r.max : ""}</span></button>`;
+          ${r.has_pw ? LOCK_ICON : `<span class="dot on"></span>`}
+          <span style="display:flex; flex-direction:column; min-width:0">${nm ? `<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(nm)}</span>` : ""}<span class="nm" style="${nm ? "font-size:12px; color:var(--muted-2)" : ""}">${r.private ? "privada · " : ""}${esc(r.id)}</span></span>
+          <span class="n">${r.players.length}${r.max ? "/" + r.max : ""}</span></button>`;
       }).join("") : `<p class="sub" style="padding:6px 12px 6px 56px; font-size:13.5px;">Sin salas abiertas</p>`}
       ${c.queues.filter((q) => q.waiting).map((q) => `<div class="tree-group" style="padding-left:56px; font-size:13.5px">Buscando partida: ${esc(q.mode)} · ${q.waiting}/${q.size}</div>`).join("")}
     `).join("") : `<p class="sub" style="padding:8px 12px 8px 30px; font-size:14px;">Todavía nadie se ha conectado a este proyecto.</p>`}
@@ -744,26 +748,38 @@ async function tabSalas(P) {
     try { objs = (await dev(`/api/dev/world/${encodeURIComponent(cur.ns)}/${encodeURIComponent(r.id)}`)).data || {}; } catch {}
     S.ctx = { api: dev, worldBase: `/api/dev/world/${encodeURIComponent(cur.ns)}/${encodeURIComponent(r.id)}`, kickPath: "/api/dev/kick", after: () => render() };
     const objList = Object.entries(objs);
+    const props = Object.entries(r.props || {});
+    const nombre = r.props && r.props.nombre ? String(r.props.nombre) : "";
     detail = `
       <div class="head" style="align-items:flex-start">
         <div style="display:flex; flex-direction:column; gap:8px;">
           <span class="eyebrow">Sala · versión ${esc(cur.ver)}</span>
-          <h1 class="mono" style="font-size:30px; font-weight:500; font-family:var(--mono)">${esc(r.id)}</h1>
+          ${nombre ? `<div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap"><h1 style="font-size:30px">${esc(nombre)}</h1><span class="mono" style="font-size:18px; color:var(--muted-2)">${esc(r.id)}</span></div>`
+                   : `<h1 class="mono" style="font-size:30px; font-weight:500; font-family:var(--mono)">${esc(r.id)}</h1>`}
           <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:14px; color:var(--nav);">
             <span class="pill">${r.players.length}${r.max ? "/" + r.max : ""} jugadores</span>
             <span class="pill">Host: #${esc(r.host)}</span>
             <span class="pill">${r.id.startsWith("match_") ? "Partida rápida" : "Sala normal"}</span>
+            ${r.has_pw ? `<span class="pill pill-gold">Con contraseña</span>` : ""}
+            <span class="pill" style="color:#C3BAFF; border-color:#3A3370">${r.private ? "Privada" : "Pública"}</span>
+            ${r.locked ? `<span class="pill pill-gold">Cerrada</span>` : `<span class="pill" style="color:var(--ok); border-color:#1F4A3A">Abierta</span>`}
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" type="button" data-act="refresh">Actualizar</button>
       </div>
+      ${props.length ? `<section class="card">
+        <div class="card-head"><h2>Datos de la sala <span class="mono" style="font-size:13px; color:var(--muted-2); font-weight:400">(los pone el host)</span></h2></div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));">
+          ${props.map(([k, v]) => `<div style="padding:14px 22px; display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--line)"><span class="mono" style="font-size:13px; color:var(--muted-2)">${esc(k)}</span><span style="font-weight:500; word-break:break-word">${esc(typeof v === "string" ? v : fmtJson(v))}</span></div>`).join("")}
+        </div>
+      </section>` : ""}
       <section class="card">
         <div class="card-head"><h2>Jugadores</h2></div>
         <div class="tbl-box"><table style="min-width:620px">
           <thead><tr><th>Id</th><th>Puesto</th><th>Nombre (estado)</th><th>Entidades</th><th class="r">Acción</th></tr></thead>
           <tbody>${r.players.map((p) => `<tr>
             <td class="mono">#${esc(p.id)}</td><td>${esc(p.slot)}</td>
-            <td>${esc(playerName(p))}${p.id === r.host ? '<span class="tag">HOST</span>' : ""}</td>
+            <td>${esc(playerName(p))}${p.id === r.host ? '<span class="tag">HOST</span>' : ""}${p.away ? '<span class="tag" style="color:var(--muted-2); border-color:var(--line-2)" title="Se le cayó el internet; se le guarda el lugar unos segundos">reconectando…</span>' : ""}</td>
             <td style="color:var(--nav)">${esc(p.entities ?? 0)}</td>
             <td class="r"><button class="btn btn-danger btn-sm" type="button" data-act="kick" data-id="${esc(p.id)}">Expulsar</button></td>
           </tr>`).join("")}</tbody></table></div>
@@ -778,6 +794,7 @@ async function tabSalas(P) {
           </div>`).join("") : `<p class="empty">Esta sala no tiene objetos guardados.</p>`}
       </section>`;
     S.objs = objs;
+    detail += `<div class="note">${ICON_INFO}<p>La contraseña de una sala nunca se muestra aquí (el servidor solo guarda una huella). Las salas <b>privadas</b> también salen en esta lista, aunque no aparezcan en <code>orb_list_rooms</code> del juego.</p></div>`;
   }
   $("#app").innerHTML = `<div class="split">${tree}<main class="main">${detail}</main></div>`;
   every(3000, async () => {
@@ -1082,6 +1099,20 @@ draw_circle_colour(20, 20, 6, _c, _c, false);`,
 if (orb_ping() > 200) draw_text(10, 30, "Conexión lenta");`,
     ideas: ["Pinta el ping de verde, amarillo o rojo según qué tan alto esté.", "Usa <code>orb_my_id()</code> para saber si un evento que llegó es tuyo (<code>_from == orb_my_id()</code>)."],
     ojo: ["El id cambia cada vez que te conectas: no lo uses para guardar progreso. Para eso usa un nombre o código del jugador como clave en la base de datos."] },
+  { cat: "conexion", title: "Si se cae el internet: volver a tu lugar",
+    desc: "Si a un jugador se le corta el internet estando en una sala, el servidor le <b>guarda el lugar 20 segundos</b>. Órbita se reconecta sola y, si llega a tiempo, vuelve con el <b>mismo id, el mismo puesto (equipo), su estado y sus entidades</b>, aunque el host ya haya cerrado la sala. No tienes que programar nada.",
+    params: [["ORB_EV_PLAYER_AWAY", "<code>{ player }</code> — a otro jugador se le cayó el internet. Su personaje se queda quieto donde estaba."], ["ORB_EV_PLAYER_BACK", "<code>{ player }</code> — volvió a tiempo."], ["ORB_EV_LEFT", "Si no vuelve en esos 20 segundos, llega como siempre: salió de la sala."], ["ORB_EV_CONNECTED", "Trae <code>resumed: true</code> si volviste a tu lugar."], ["orb_player_away(id)", "true mientras ese jugador está reconectando. En su objeto también tienes <code>orb_away</code>."]],
+    code: `orb_on(ORB_EV_PLAYER_AWAY, function(_d, _from) {
+    mensaje = "Esperando a " + orb_player_name(_d.player) + "...";
+    pausado = true;
+});
+orb_on(ORB_EV_PLAYER_BACK, function(_d, _from) { pausado = false; });
+
+// obj_otro_jugador → Draw: dibujarlo transparente mientras reconecta
+image_alpha = orb_away ? 0.4 : 1;
+event_inherited();`,
+    ideas: ["En juegos por turnos o de cartas: pausa el turno mientras <code>orb_player_away</code> sea true.", "Muestra un ícono de \"sin conexión\" sobre el jugador.", "Si eres el host y alguien no vuelve (<code>ORB_EV_LEFT</code>), reparte su lugar o termina la partida."],
+    ojo: ["Si sale a propósito (<code>orb_disconnect</code> o <code>orb_leave_room</code>), sale al momento: no se le guarda el lugar.", "Si el host lo expulsa mientras está reconectando, ya no puede volver a ese lugar.", "El dueño del servidor puede cambiar los 20 segundos con la variable <code>RESUME_GRACE_MS</code>."] },
   { cat: "conexion", title: "orb_debug_draw(x, y)",
     desc: "Dibuja el estado de la conexión, el servidor, tu id, el ping, la sala, tu puesto y cuántos jugadores hay. Úsalo en un evento <b>Draw GUI</b> mientras desarrollas.",
     code: `// Draw GUI de obj_control
@@ -1097,9 +1128,9 @@ if (debug_mode) orb_debug_draw(10, 10);`,
     ojo: ["Con <code>bad_key</code> y <code>bad_protocol</code> Órbita deja de reintentar sola, porque reintentar no lo arregla."] },
 
   // ===================== SALAS =====================
-  { cat: "salas", title: "orb_join_room(sala, [max], [callback])",
+  { cat: "salas", title: "orb_join_room(sala, [max], [callback], [contraseña])",
     desc: "Entra a una sala. Si no existe, se crea y tú quedas de host. Si no estás conectado todavía, entra sola apenas se conecte.",
-    params: [["sala", "Nombre de la sala (texto, hasta 64 letras)."], ["max", "Máximo de jugadores. 0 = sin límite. Solo cuenta al crear la sala."], ["callback", "Opcional: <code>function(ok, sala_o_error)</code>. Error posible: <code>\"room_full\"</code>."]],
+    params: [["sala", "Nombre o código de la sala (texto, hasta 64 letras)."], ["max", "Máximo de jugadores. 0 = sin límite. Solo cuenta al crear la sala."], ["callback", "Opcional: <code>function(ok, sala_o_error)</code>. Errores: <code>room_full</code>, <code>wrong_password</code>, <code>room_locked</code> (la partida ya empezó), <code>rate_limited</code> (muchas contraseñas malas seguidas)."], ["contraseña", "Si la sala tiene contraseña. Si la sala no existe y pones una, se crea con esa contraseña."]],
     returns: "Nada. Al entrar llega <code>ORB_EV_ROOM</code> con <code>{ name, host, slot }</code>.",
     code: `// Sala privada con código de 4 letras
 codigo = "K7QZ";
@@ -1107,8 +1138,69 @@ orb_join_room("priv_" + codigo, 4, function(_ok, _r) {
     if (_ok) room_goto(rm_lobby);
     else if (_r == "room_full") mensaje = "La sala está llena";
 });`,
-    ideas: ["<b>Salas con código</b>: genera un código al azar y compártelo para que tus amigos entren con <code>orb_join_room(\"priv_\" + codigo)</code>.", "<b>Un lobby general</b> donde todos se ven antes de jugar: <code>orb_join_room(\"lobby\")</code>.", "<b>Mundo por zonas</b>: una sala por mapa (<code>\"bosque\"</code>, <code>\"cueva\"</code>) y cambias de sala al cambiar de room.", "<b>Salas por idioma o región</b>: <code>\"lobby_es\"</code>, <code>\"lobby_en\"</code>."],
+    ideas: ["<b>Salas con código y contraseña</b>: mejor usa <code>orb_create_room</code> (abajo), que inventa el código por ti.", "<b>Un lobby general</b> donde todos se ven antes de jugar: <code>orb_join_room(\"lobby\")</code>.", "<b>Mundo por zonas</b>: una sala por mapa (<code>\"bosque\"</code>, <code>\"cueva\"</code>) y cambias de sala al cambiar de room.", "<b>Salas por idioma o región</b>: <code>\"lobby_es\"</code>, <code>\"lobby_en\"</code>."],
     ojo: ["Solo estás en una sala a la vez: entrar a otra te saca de la anterior.", "El nombre de la sala lo ve cualquiera con <code>orb_list_rooms</code>; para algo privado usa códigos difíciles de adivinar."] },
+
+  { cat: "salas", title: "orb_create_room([opciones], [callback])",
+    desc: "Crea una sala personalizada (estilo Free Fire) y entras de host. Si no le das <code>code</code>, el servidor inventa un código de 6 letras fácil de dictar (sin 0/O ni 1/I).",
+    params: [["code", "Opcional: el código que quieras. Si ya existe: error <code>room_exists</code>."], ["max", "Máximo de jugadores (0 = sin límite)."], ["password", "Opcional: contraseña para entrar."], ["private", "<code>true</code> = no sale en <code>orb_list_rooms</code>: solo entra quien sabe el código."], ["props", "Datos que todos ven: <code>{ nombre, mapa, modo, … }</code> (hasta 32 datos, 4 KB)."], ["callback", "<code>function(ok, codigo_o_error)</code>."]],
+    code: `// Botón "Crear sala" de tu menú
+orb_create_room({
+    max: 8,
+    password: "4827",
+    private: false,
+    props: { nombre: "Sala de " + nombre, mapa: "Bosque", modo: "4 vs 4" }
+}, function(_ok, _codigo) {
+    if (_ok) { codigo_sala = _codigo; room_goto(rm_lobby); }
+    else show_message("No se pudo crear: " + string(_codigo));
+});`,
+    ideas: ["Muestra el código y la contraseña en grande en el lobby para que los compartan (y un botón Copiar con <code>clipboard_set_text</code>).", "Salas de torneo: <code>private: true</code> y pasas el código solo a los inscritos."],
+    ojo: ["La contraseña no se puede leer después desde el servidor (solo se guarda una huella). Si la quieres mostrar, guárdala en una variable al crear la sala."] },
+  { cat: "salas", title: "Unirse con código y contraseña",
+    desc: "Para un botón \"Unirse con código\": intentas entrar sin contraseña y, si responde <code>wrong_password</code>, la pides y vuelves a intentar.",
+    code: `// En tu objeto de menú
+unirse = function(_codigo, _clave) {
+    codigo = _codigo;
+    orb_join_room(_codigo, 0, function(_ok, _r) {
+        if (_ok) room_goto(rm_lobby);
+        else if (_r == "wrong_password") pedir = get_string_async("Contraseña:", "");
+        else if (_r == "room_locked") show_message("La partida ya empezó");
+    }, _clave);
+};
+// Evento Async - Dialog
+if (async_load[? "id"] == pedir && async_load[? "status"]) unirse(codigo, async_load[? "result"]);`,
+    ideas: ["Mira la demo de Órbita: tecla <b>L</b> abre la pantalla de salas con todo esto ya hecho (<code>obj_demo_salas</code>)."] },
+  { cat: "salas", title: "orb_room_props() · orb_room_locked() · orb_room_has_password() · orb_room_private() · orb_room_max()",
+    desc: "Los datos de la sala en la que estás. Se actualizan solos cuando el host los cambia (llega <code>ORB_EV_ROOM_PROPS</code>).",
+    code: `// Draw GUI del lobby
+var _p = orb_room_props();
+draw_text(20, 20, string(_p[$ "nombre"] ?? orb_room()));
+draw_text(20, 40, string(_p[$ "mapa"] ?? "") + " · " + string(_p[$ "modo"] ?? ""));
+if (orb_room_locked()) draw_text(20, 60, "Partida en curso");`,
+    ideas: ["Carga el mapa que eligió el host cuando empieza la partida: <code>room_goto(asset_get_index(\"rm_\" + _p.mapa))</code>."] },
+  { cat: "salas", title: "orb_set_room_props(datos, [callback])",
+    desc: "<b>Solo el host.</b> Cambia datos de la sala; se mezclan con los que ya tenía. Pon un dato en <code>undefined</code> para borrarlo. Todos reciben <code>ORB_EV_ROOM_PROPS</code>.",
+    code: `// El host cambia de mapa en el lobby
+if (orb_is_host()) orb_set_room_props({ mapa: "Desierto" });
+
+// Todos:
+orb_on(ORB_EV_ROOM_PROPS, function(_d, _from) {
+    mapa_elegido = _d.props[$ "mapa"];
+});`,
+    ideas: ["Mapa, modo, rondas, tiempo límite, si se permite cierta arma…", "Un estado <code>{ fase: \"lobby\" | \"jugando\" | \"final\" }</code> para que el que entra tarde sepa en qué va la sala."],
+    ojo: ["Si no eres host responde <code>not_host</code>."] },
+  { cat: "salas", title: "orb_lock_room(cerrada, [callback])",
+    desc: "<b>Solo el host.</b> Cierra la sala: nadie más puede entrar (<code>room_locked</code>). Úsalo al iniciar la partida.",
+    code: `// Botón "Iniciar partida" del host
+orb_lock_room(true);
+orb_send_all("empezar", {});
+
+orb_on("empezar", function(_d, _from) { room_goto(rm_partida); });`,
+    ideas: ["Al terminar la partida, <code>orb_lock_room(false)</code> para que entren nuevos a la siguiente ronda."] },
+  { cat: "salas", title: "orb_set_room_password(contraseña) · orb_set_room_private(privada)",
+    desc: "<b>Solo el host.</b> Pone, cambia o quita (<code>\"\"</code>) la contraseña, y hace la sala privada o pública. Los que ya están adentro se quedan.",
+    code: `orb_set_room_password("");      // quitar contraseña
+orb_set_room_private(true);     // ya no sale en la lista` },
   { cat: "salas", title: "orb_leave_room([callback])",
     desc: "Sale de la sala actual. También cancela la búsqueda de partida si estabas buscando.",
     code: `// Botón "Salir de la partida"
@@ -1150,17 +1242,17 @@ orb_on(ORB_EV_KICKED, function(_d, _from) {
 });`,
     ideas: ["Sacar a alguien que no está listo o que molesta en el lobby."] },
   { cat: "salas", title: "orb_list_rooms(callback) · orb_room_players(sala, callback)",
-    desc: "<code>orb_list_rooms</code> te da las salas abiertas de tu versión: <code>[{ id, players, max }]</code>. <code>orb_room_players</code> te da los ids de los jugadores de una sala.",
+    desc: "<code>orb_list_rooms</code> te da las salas de tu versión: <code>[{ id, players, max, props, locked, has_pw }]</code>. Las <b>privadas no salen</b>. <code>orb_room_players</code> te da los ids de los jugadores de una sala.",
     code: `// Buscador de salas
 orb_list_rooms(function(_ok, _lista) {
     if (!_ok) exit;
     salas = [];
     for (var i = 0; i < array_length(_lista); i++) {
         var _s = _lista[i];
-        if (_s.max == 0 || _s.players < _s.max) array_push(salas, _s);  // solo las que tienen espacio
+        if (!_s.locked && (_s.max == 0 || _s.players < _s.max)) array_push(salas, _s);  // solo las que tienen espacio
     }
 });`,
-    ideas: ["<b>Navegador de salas</b>: dibuja la lista y al hacer clic entra con <code>orb_join_room(sala.id)</code>.", "Muestra \"3/4\" en cada sala con <code>players</code> y <code>max</code>.", "Esconde las salas que empiezan con <code>\"priv_\"</code> para que solo se entre con código."] },
+    ideas: ["<b>Navegador de salas</b>: dibuja la lista y al hacer clic entra con <code>orb_join_room(sala.id)</code>.", "Muestra un candado si <code>has_pw</code> es true, y el nombre y mapa con <code>props</code>.", "Muestra \"3/4\" en cada sala con <code>players</code> y <code>max</code>, y \"En juego\" si <code>locked</code>."] },
   { cat: "salas", title: "orb_matchmake(tamaño, [modo], [callback])",
     desc: "Partida rápida: te pone en una cola con los que buscan lo mismo. Cuando hay <code>tamaño</code> jugadores, entran todos juntos a una sala nueva (<code>match_&lt;modo&gt;_&lt;número&gt;</code>). Mientras esperas llega <code>ORB_EV_QUEUE</code> con <code>{ count, size }</code>.",
     params: [["tamaño", "Cuántos jugadores por partida (1 a 64)."], ["modo", "Opcional. Solo se juntan los que buscan el mismo modo: <code>\"ctf\"</code>, <code>\"duelo\"</code>, <code>\"2v2\"</code>…"]],
@@ -1277,7 +1369,7 @@ orb_on("golpe", function(_d, _from) { vida -= _d.dano; });`,
     ojo: ["Solo llega si el otro está en tu misma sala."] },
   { cat: "jugadores", title: "Eventos del sistema",
     desc: "Llegan solos; escúchalos con <code>orb_on</code>.",
-    params: [["ORB_EV_CONNECTED", "<code>{ my_id }</code> — te conectaste."], ["ORB_EV_DISCONNECTED", "<code>{ reason }</code> — se cortó (se reintenta sola)."], ["ORB_EV_ROOM", "<code>{ name, host, slot }</code> — entraste a una sala (<code>name</code> = \"\" si saliste)."], ["ORB_EV_JOINED", "<code>{ player, slot }</code> — alguien entró a tu sala."], ["ORB_EV_LEFT", "<code>{ player }</code> — alguien salió."], ["ORB_EV_HOST", "<code>{ player }</code> — cambió el host."], ["ORB_EV_QUEUE", "<code>{ count, size }</code> — cómo va la búsqueda de partida."], ["ORB_EV_PLAYER_DATA", "<code>{ player }</code> — el servidor cambió los datos de un jugador."], ["ORB_EV_KICKED", "<code>{ by }</code> — te expulsaron."], ["ORB_EV_DISCORD", "<code>{ channel, user, user_id, msg }</code> — mensaje de Discord."], ["ORB_EV_LOGIN", "<code>{ uid, name, user, guest }</code> — entraste a tu cuenta de jugador."], ["ORB_EV_ERROR", "<code>{ code, msg }</code> — algo salió mal."]] },
+    params: [["ORB_EV_CONNECTED", "<code>{ my_id, resumed }</code> — te conectaste (<code>resumed</code> = volviste a tu lugar)."], ["ORB_EV_DISCONNECTED", "<code>{ reason }</code> — se cortó (se reintenta sola)."], ["ORB_EV_ROOM", "<code>{ name, host, slot }</code> — entraste a una sala (<code>name</code> = \"\" si saliste)."], ["ORB_EV_JOINED", "<code>{ player, slot }</code> — alguien entró a tu sala."], ["ORB_EV_LEFT", "<code>{ player }</code> — alguien salió."], ["ORB_EV_HOST", "<code>{ player }</code> — cambió el host."], ["ORB_EV_QUEUE", "<code>{ count, size }</code> — cómo va la búsqueda de partida."], ["ORB_EV_PLAYER_DATA", "<code>{ player }</code> — el servidor cambió los datos de un jugador."], ["ORB_EV_KICKED", "<code>{ by }</code> — te expulsaron."], ["ORB_EV_DISCORD", "<code>{ channel, user, user_id, msg }</code> — mensaje de Discord."], ["ORB_EV_LOGIN", "<code>{ uid, name, user, guest }</code> — entraste a tu cuenta de jugador."], ["ORB_EV_ROOM_PROPS", "<code>{ props, locked, has_pw, private }</code> — el host cambió los datos de la sala."], ["ORB_EV_PLAYER_AWAY", "<code>{ player }</code> — a ese jugador se le cayó el internet (se le guarda el lugar)."], ["ORB_EV_PLAYER_BACK", "<code>{ player }</code> — volvió a tiempo a su lugar."], ["ORB_EV_ERROR", "<code>{ code, msg }</code> — algo salió mal."]] },
 
   // ===================== DATOS =====================
   { cat: "datos", title: "orb_db_set(colección, clave, valor, [callback])",
@@ -1374,7 +1466,7 @@ orb_request_server("comprar", { item: "espada" }, function(_ok, _r) {
     ideas: ["<b>Compras</b> con moneda del juego.", "<b>Reclamar el premio diario</b> (el servidor revisa la fecha).", "<b>Validar un récord</b> antes de ponerlo en el ranking."] },
   { cat: "servidor", title: "Lógica en el servidor (games/*.js)",
     desc: "Código JavaScript que corre en el servidor de Órbita para tu proyecto. Hoy lo instala el administrador del servidor: mándale tu archivo. Se llama <code>games/&lt;id_del_proyecto&gt;.js</code> (el id sale en Claves y ajustes). Todas las funciones son opcionales.",
-    params: [["onConnect(api, p) · onDisconnect(api, p)", "Alguien se conectó o se fue."], ["onJoinRoom(api, p, sala) · onLeaveRoom(api, p, sala)", "Alguien entró o salió de una sala."], ["onTick(api)", "Cada 100 ms (temporizadores, rondas)."], ["onEvent(api, p, nombre, datos)", "Llega con <code>orb_send_server</code>."], ["onRequest(api, p, nombre, datos)", "Llega con <code>orb_request_server</code>. Lo que devuelvas es la respuesta; si lanzas un error, ok = false."], ["p (el jugador)", "<code>p.id</code>, <code>p.roomId</code>, <code>p.slot</code>, <code>p.state</code>, <code>p.uid</code> (id de su cuenta, \"\" si no tiene) y <code>p.pname</code> (su nombre)."], ["api", "<code>sendTo</code>, <code>sendToRoom</code>, <code>setPlayerData</code>, <code>moveToRoom</code>, <code>playersInRoom</code>, <code>hostOf</code>, <code>db.get/set/delete/list</code>, <code>log</code>."]],
+    params: [["onConnect(api, p) · onDisconnect(api, p) · onReconnect(api, p)", "Alguien se conectó, se fue (de verdad) o volvió a su lugar después de caerse."], ["onJoinRoom(api, p, sala) · onLeaveRoom(api, p, sala)", "Alguien entró o salió de una sala."], ["onTick(api)", "Cada 100 ms (temporizadores, rondas)."], ["onEvent(api, p, nombre, datos)", "Llega con <code>orb_send_server</code>."], ["onRequest(api, p, nombre, datos)", "Llega con <code>orb_request_server</code>. Lo que devuelvas es la respuesta; si lanzas un error, ok = false."], ["p (el jugador)", "<code>p.id</code>, <code>p.roomId</code>, <code>p.slot</code>, <code>p.state</code>, <code>p.uid</code> (id de su cuenta, \"\" si no tiene) y <code>p.pname</code> (su nombre)."], ["api", "<code>room(sala)</code> y <code>setRoom(sala, { props, locked, private, password })</code> para ver o cambiar salas, <code>sendTo</code>, <code>sendToRoom</code>, <code>setPlayerData</code>, <code>moveToRoom</code>, <code>playersInRoom</code>, <code>hostOf</code>, <code>db.get/set/delete/list</code>, <code>log</code>."]],
     code: `// games/p_0123456789.js
 module.exports = {
   onEvent(api, p, nombre, datos) {
@@ -1607,7 +1699,7 @@ async function adminLive() {
     ${games.filter(([, g]) => g.rooms.length || g.queues.some((q) => q.waiting)).map(([ns, g]) => `<section class="card">
       <div class="card-head"><h2>${esc(pname(ns))}</h2><span class="mono" style="font-size:12.5px; color:var(--muted-2)">${esc(ns)}</span></div>
       ${g.rooms.map((r) => `<div class="row" style="align-items:flex-start">
-        <div style="min-width:180px; display:flex; flex-direction:column; gap:4px"><span class="mono">${esc(r.id)}</span><span class="sub" style="font-size:13px">${r.players.length}${r.max ? "/" + r.max : ""} jugadores · host #${esc(r.host)}</span></div>
+        <div style="min-width:180px; display:flex; flex-direction:column; gap:4px"><span style="display:flex; align-items:center; gap:8px">${r.has_pw ? LOCK_ICON : ""}<span class="mono">${esc(r.id)}</span>${r.props && r.props.nombre ? `<span>${esc(r.props.nombre)}</span>` : ""}${r.private ? '<span class="tag tag-v" style="margin:0">privada</span>' : ""}${r.locked ? '<span class="tag" style="margin:0">cerrada</span>' : ""}</span><span class="sub" style="font-size:13px">${r.players.length}${r.max ? "/" + r.max : ""} jugadores · host #${esc(r.host)}</span></div>
         <div style="flex:1; display:flex; flex-wrap:wrap; gap:8px">${r.players.map((p) => `<span class="pill" style="display:inline-flex; align-items:center; gap:8px; padding:4px 6px 4px 12px">#${esc(p.id)} ${esc(playerName(p))} <button class="btn btn-danger btn-sm" style="min-height:30px; padding:4px 10px" type="button" data-act="kick" data-id="${esc(p.id)}" aria-label="Expulsar a ${esc(p.id)}">Expulsar</button></span>`).join("")}</div>
       </div>`).join("")}
       ${g.queues.filter((q) => q.waiting).map((q) => `<div class="row sub">Buscando partida: ${esc(q.mode)} · ${q.waiting}/${q.size}</div>`).join("")}

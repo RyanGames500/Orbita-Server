@@ -33,7 +33,7 @@ function client(game = "Prueba", key = TEST_KEY_MD5) {
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "orbita-"));
-  const env = { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GAME_KEY: TEST_KEY };
+  const env = { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GAME_KEY: TEST_KEY, RESUME_GRACE_MS: "300" };
   const srv = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], { env, stdio: "ignore" });
   await sleep(700);
   try {
@@ -150,7 +150,7 @@ function client(game = "Prueba", key = TEST_KEY_MD5) {
 
     console.log("\nDesconexión y guardado");
     b.clear();
-    a.ws.terminate(); await sleep(150);
+    a.ws.terminate(); await sleep(600);   // se le guarda el lugar 300 ms (en la prueba) y después sale
     ok(b.last("leave")?.id === a.id, "si alguien se cae, la sala recibe 'leave'");
     await sleep(2300);
     const saved = JSON.parse(fs.readFileSync(path.join(dataDir, "world.json"), "utf8"));

@@ -43,6 +43,8 @@ const MAX_KEYS_PER_PROJECT = Number(process.env.MAX_KEYS_PER_PROJECT) || 5;
 const HELLO_TIMEOUT_MS = 10000;
 const DEV_SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 const AUTH_MAX_PER_MINUTE = Number(process.env.AUTH_MAX_PER_MINUTE) || 10;
+// Si a alguien se le cae el internet estando en una sala, se le guarda el lugar este tiempo (0 = no guardar)
+const RESUME_GRACE_MS = process.env.RESUME_GRACE_MS !== undefined ? Number(process.env.RESUME_GRACE_MS) : 20000;
 
 const AI_PROVIDER = (process.env.AI_PROVIDER || "anthropic").toLowerCase();
 const AI_API_KEY = process.env.AI_API_KEY || "";
@@ -381,7 +383,7 @@ function projectDetail(pid, withKeys) {
             players: r.members.map((id) => {
               const pl = clients.get(id);
               return pl
-                ? { id: pl.id, slot: pl.slot, state: pl.state, entities: Object.keys(pl.entities).length, pdata: pl.pdata }
+                ? { id: pl.id, slot: pl.slot, name: pl.pname || "", uid: pl.uid || "", away: !!pl.ghost, state: pl.state, entities: Object.keys(pl.entities).length, pdata: pl.pdata }
                 : { id };
             }),
           }))
@@ -421,7 +423,7 @@ function disconnectKey(keyId) {
   for (const c of clients.values()) {
     if (c.ready && c.apiKeyId === keyId) {
       send(c, { t: "err", code: "bad_key", msg: "La clave del juego fue desactivada" });
-      c.ws.close();
+      dropClient(c);
     }
   }
 }
@@ -552,7 +554,7 @@ function kickAccount(ns, uid, code = "banned") {
   for (const c of clients.values()) {
     if (c.ready && c.dbNs === ns && c.uid === uid) {
       send(c, { t: "err", code, msg: code === "banned" ? "Esta cuenta fue bloqueada" : "Tu cuenta fue borrada" });
-      c.ws.close();
+      dropClient(c);
     }
   }
 }
@@ -661,6 +663,7 @@ async function handleAuth(c, m) {
 
 function playerInfo(c) {
   const out = { id: c.id, slot: c.slot, s: c.state, e: c.entities, pd: c.pdata };
+  if (c.ghost) out.away = true;
   if (c.uid) { out.uid = c.uid; out.nm = c.pname; }
   return out;
 }
@@ -856,6 +859,75 @@ function roomPublic(room) {
   return { props: room.props || {}, locked: !!room.locked, private: !!room.private, has_pw: !!room.passHash };
 }
 
+// Todo lo de la sala para quien entra (o vuelve después de caerse)
+function sendRoomSnapshot(c, room, extra = {}) {
+  const others = room.members.filter((id) => id !== c.id).map((id) => clients.get(id)).filter(Boolean);
+  const objs = gameWorld(c.game.id).rooms[room.id] || {};
+  send(c, {
+    t: "room",
+    id: room.id,
+    host: hostOf(room),
+    slot: c.slot,
+    players: others.map(playerInfo),
+    world: Object.entries(objs).map(([id, p]) => ({ id: Number(id), p })),
+    max: room.max,
+    ...roomPublic(room),
+    ...extra,
+  });
+}
+
+// ------------------------------------------------------------------
+// Volver después de que se cae el internet
+//   Al caerse estando en una sala, el jugador queda "ausente" RESUME_GRACE_MS: conserva su id, su puesto,
+//   su estado y sus entidades. Si vuelve a tiempo (con el código secreto "rs" que le dimos en welcome),
+//   recupera todo aunque la sala esté cerrada. Si no vuelve, ahí sí sale de la sala.
+// ------------------------------------------------------------------
+function finalizeClient(c) {
+  clearTimeout(c.ghostTimer);
+  c.ghost = false;
+  if (c.ready) {
+    leaveRoom(c, false);
+    runScript(c.gameId, "onDisconnect", c);
+    log(`[${c.gameId}] ${c.id} desconectado`);
+  }
+  clients.delete(c.id);
+}
+// Sacar a alguien sin dejarlo volver (clave pausada, cuenta bloqueada…)
+function dropClient(c) {
+  c.noResume = true;
+  if (c.ghost) finalizeClient(c);
+  else c.ws.close();
+}
+function tryResume(c, m, scopedGameId) {
+  const r = m.resume;
+  if (!isObj(r) || RESUME_GRACE_MS <= 0) return false;
+  const old = clients.get(Number(r.id));
+  if (!old || old === c || !old.ready || old.noResume || old.gameId !== scopedGameId || !old.roomId) return false;
+  if (!old.rs || !safeEqual(old.rs, str(r.rs, 64))) return false;
+  // Pasar la conexión nueva al jugador de antes
+  clearTimeout(old.ghostTimer);
+  const wasGhost = old.ghost;
+  const oldWs = old.ws;
+  old.ghost = false;
+  old.ws = c.ws;
+  old.ip = c.ip;
+  old.rate = {}; old.rateWindow = Date.now(); old.rateCount = 0;
+  c.ws._orbClient = old;
+  clearTimeout(c.helloTimer);
+  clients.delete(c.id);
+  if (oldWs && oldWs !== c.ws && oldWs.readyState === WebSocket.OPEN) { try { oldWs.terminate(); } catch {} }
+  old.rs = crypto.randomBytes(16).toString("hex");
+  send(old, { t: "welcome", id: old.id, time: Date.now(), proto: PROTOCOL, rs: old.rs, resumed: true, ...(old.uid ? { uid: old.uid, name: old.pname } : {}) });
+  const room = old.game.rooms.get(old.roomId);
+  if (room) {
+    sendRoomSnapshot(old, room, { resumed: true });
+    if (wasGhost) sendRoom(old.game, room.id, { t: "back", id: old.id }, old.id);
+  }
+  log(`[${old.gameId}] ${old.id} volvió a su sala "${old.roomId}"`);
+  runScript(old.gameId, "onReconnect", old);
+  return true;
+}
+
 function joinRoom(c, roomId, max = 0, opts = {}) {
   roomId = str(roomId, 64);
   if (!roomId) return { ok: false, error: "bad_room" };
@@ -888,18 +960,7 @@ function joinRoom(c, roomId, max = 0, opts = {}) {
   c.slot = slot;
   c.entities = {};
 
-  const others = room.members.filter((id) => id !== c.id).map((id) => clients.get(id)).filter(Boolean);
-  const objs = gameWorld(game.id).rooms[roomId] || {};
-  send(c, {
-    t: "room",
-    id: roomId,
-    host: hostOf(room),
-    slot,
-    players: others.map(playerInfo),
-    world: Object.entries(objs).map(([id, p]) => ({ id: Number(id), p })),
-    max: room.max,
-    ...roomPublic(room),
-  });
+  sendRoomSnapshot(c, room);
   sendRoom(game, roomId, { t: "join", ...playerInfo(c) }, c.id);
   log(`[${game.id}] ${c.id} entró a "${roomId}" (${room.members.length}${room.max ? "/" + room.max : ""}) puesto ${slot}`);
   runScript(c.gameId, "onJoinRoom", c, roomId);
@@ -1269,6 +1330,8 @@ function onMessage(c, raw) {
       scopedGameId = `${projectId}_${rawGame}`; // ORB_GAME_ID = versión o modo dentro del proyecto
     }
 
+    if (tryResume(c, m, scopedGameId)) return;
+
     c.ready = true;
     c.apiKeyId = keyInfo.keyId;
     c.projectId = projectId;
@@ -1280,7 +1343,8 @@ function onMessage(c, raw) {
     // Si el juego trae el token de la cuenta del jugador, entra ya con su cuenta
     let authErr = "";
     if (typeof m.auth === "string" && m.auth) authErr = resumeWithToken(c, m.auth.slice(0, 128));
-    send(c, { t: "welcome", id: c.id, time: Date.now(), proto: PROTOCOL, ...(c.uid ? { uid: c.uid, name: c.pname } : {}), ...(authErr ? { auth_err: authErr } : {}) });
+    c.rs = crypto.randomBytes(16).toString("hex"); // código secreto para volver si se cae el internet
+    send(c, { t: "welcome", id: c.id, time: Date.now(), proto: PROTOCOL, rs: c.rs, ...(c.uid ? { uid: c.uid, name: c.pname } : {}), ...(authErr ? { auth_err: authErr } : {}) });
     log(`[${c.gameId}] ${c.id} conectado (${countActivePlayersByKey(keyInfo.keyId)} activos en clave)`);
     runScript(c.gameId, "onConnect", c);
     return;
@@ -1383,6 +1447,7 @@ function onMessage(c, raw) {
     }
 
     case "bye":
+      c.noResume = true; // se fue a propósito: no guardarle el lugar
       c.ws.close();
       break;
   }
@@ -2096,23 +2161,31 @@ wss.on("connection", (ws, req) => {
     lastPing: Date.now(), rate: {}, rateWindow: Date.now(), rateCount: 0, uid: "", pname: "", tokenHash: "",
   };
   clients.set(c.id, c);
+  ws._orbClient = c; // puede cambiar si este jugador "vuelve" a su lugar de antes
   // Si no manda "hello" a tiempo, se cierra (para que nadie acapare conexiones sin entrar)
-  const helloTimer = setTimeout(() => { if (!c.ready) ws.close(); }, HELLO_TIMEOUT_MS);
+  c.helloTimer = setTimeout(() => { if (!ws._orbClient.ready) ws.close(); }, HELLO_TIMEOUT_MS);
   ws.isAlive = true;
   ws.on("pong", () => (ws.isAlive = true));
   ws.on("message", (raw) => {
-    try { onMessage(c, raw); } catch (e) { log(`Error con el mensaje de ${c.id}:`, e.message); }
+    const cc = ws._orbClient;
+    try { onMessage(cc, raw); } catch (e) { log(`Error con el mensaje de ${cc.id}:`, e.message); }
   });
   ws.on("close", () => {
-    clearTimeout(helloTimer);
     const left = (connPerIp.get(ip) || 1) - 1;
     if (left > 0) connPerIp.set(ip, left); else connPerIp.delete(ip);
-    if (c.ready) {
-      leaveRoom(c, false);
-      runScript(c.gameId, "onDisconnect", c);
-      log(`[${c.gameId}] ${c.id} desconectado`);
+    const cc = ws._orbClient;
+    clearTimeout(cc.helloTimer);
+    if (cc.ws !== ws) return; // esta conexión ya fue reemplazada por una nueva del mismo jugador
+    if (cc.ready && cc.roomId && !cc.noResume && RESUME_GRACE_MS > 0) {
+      // Se cayó estando en una sala: guardarle el lugar un rato
+      cc.ghost = true;
+      leaveQueue(cc);
+      sendRoom(cc.game, cc.roomId, { t: "away", id: cc.id }, cc.id);
+      cc.ghostTimer = setTimeout(() => { if (cc.ghost) finalizeClient(cc); }, RESUME_GRACE_MS);
+      log(`[${cc.gameId}] ${cc.id} se cayó; se le guarda el lugar ${Math.round(RESUME_GRACE_MS / 1000)} s`);
+      return;
     }
-    clients.delete(c.id);
+    finalizeClient(cc);
   });
   ws.on("error", () => {});
 });
