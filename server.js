@@ -471,8 +471,27 @@ function getGame(id) {
   return games.get(gid);
 }
 
+// Envíos agrupados: todo lo que se le manda a un jugador en la misma vuelta del servidor sale junto
+// en una sola escritura de red (en vez de una por mensaje). Los mensajes son los mismos y llegan en el
+// mismo orden; solo se gastan muchas menos llamadas al sistema (era lo que más CPU consumía).
+const corked = new Set();
+let uncorkScheduled = false;
+function flushCorked() {
+  uncorkScheduled = false;
+  for (const sock of corked) { try { sock.uncork(); } catch {} }
+  corked.clear();
+}
+function rawSend(ws, txt) {
+  const sock = ws._socket;
+  if (sock && !corked.has(sock)) {
+    sock.cork();
+    corked.add(sock);
+    if (!uncorkScheduled) { uncorkScheduled = true; setImmediate(flushCorked); }
+  }
+  ws.send(txt);
+}
 function send(c, obj) {
-  if (c && c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(obj));
+  if (c && c.ws.readyState === WebSocket.OPEN) rawSend(c.ws, JSON.stringify(obj));
 }
 function sendRoom(game, roomId, obj, exceptId) {
   const room = game.rooms.get(roomId);
@@ -481,7 +500,7 @@ function sendRoom(game, roomId, obj, exceptId) {
   for (const id of room.members) {
     if (id === exceptId) continue;
     const c = clients.get(id);
-    if (c && c.ws.readyState === WebSocket.OPEN) c.ws.send(txt);
+    if (c && c.ws.readyState === WebSocket.OPEN) rawSend(c.ws, txt);
   }
 }
 
@@ -2212,3 +2231,12 @@ httpServer.listen(PORT, () => {
   log(`IA: ${AI_API_KEY ? `${AI_PROVIDER} / ${AI_MODEL}` : "desactivada"} | Discord: ${DISCORD_BOT_TOKEN ? "activado" : "desactivado"} | Modo 100% Gratuito`);
   startDiscord();
 });
+// Solo para la prueba de carga (npm run carga): si este servidor lo arrancó ese programa,
+// le contesta cuánta CPU y memoria está usando. Funciona igual en Windows, Mac y Linux.
+// Cuando lo corres normal (node server.js / Render) esto no hace nada.
+if (typeof process.send === "function") {
+  process.on("message", (m) => {
+    if (m === "orb_stats") process.send({ cpu: process.cpuUsage(), rss: process.memoryUsage().rss, t: Date.now() });
+    if (m === "orb_exit") process.exit(0); // salida limpia (así se guarda el perfil de --perfil)
+  });
+}

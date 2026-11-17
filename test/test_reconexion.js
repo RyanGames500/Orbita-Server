@@ -92,7 +92,7 @@ function client(resume) {
     ok(d.has("leave", (m) => m.id === e.id) && !d.has("away"), "con 'bye' (orb_disconnect) sale al momento");
 
     console.log("\nEl servidor no se dio cuenta de la caída");
-    const f = await client(); await f.req("join", { rm: "sala2" });
+    const f = await client(); await f.req("join", { rm: "sala2" }); await sleep(30);
     d.log = [];
     const f2 = await client({ id: f.id, rs: f.rs });   // la conexión vieja sigue abierta
     await sleep(120);

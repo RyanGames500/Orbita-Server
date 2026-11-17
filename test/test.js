@@ -54,7 +54,7 @@ function client(game = "Prueba", key = TEST_KEY_MD5) {
     ok(r.ok && a.last("room")?.id === "lobby" && a.last("room").host === a.id && a.last("room").slot === 0, "entrar a sala: primero es host y puesto 0");
     a.send({ t: "st", s: { x: 10, y: 20, nombre: "Ana" }, e: { 1: { x: 5, kind: "obj_bala" } } }); await sleep(60);
     r = await b.req("join", { rm: "lobby" });
-    const snap = b.last("room");
+    const snap = b.last("room"); await sleep(30); // a los demás les llega en la misma vuelta, un instante después
     ok(r.ok && snap.slot === 1 && snap.host === a.id, "segundo jugador: puesto 1, ve al host");
     ok(snap.players.length === 1 && snap.players[0].s.nombre === "Ana" && snap.players[0].e["1"].kind === "obj_bala", "quien entra tarde recibe estado y entidades de los demás");
     ok(a.last("join")?.id === b.id && a.last("join").slot === 1, "los de la sala reciben 'join'");
