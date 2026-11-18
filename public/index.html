@@ -1021,7 +1021,8 @@ function tabClaves(P) {
 const DOC_CATS = [
   ["rapido", "Primer juego (5 min)"], ["conexion", "Conexión y red"], ["salas", "Salas y partida rápida"],
   ["jugadores", "Jugadores, entidades y eventos"], ["datos", "Base de datos y mundo"], ["servidor", "Servidor, IA y Discord"],
-  ["cuentas", "Cuentas de jugador"], ["proyectos", "Proyectos, claves y versiones"], ["todo", "Ver todo"],
+  ["cuentas", "Cuentas de jugador"], ["proyectos", "Proyectos, claves y versiones"],
+  ["rollback", "Modo rollback (2 a 4)"], ["sprites", "Sprites y animación"], ["tujuego", "Tu propio juego y Render"], ["todo", "Ver todo"],
 ];
 // Clave de ejemplo (ficticia). La real sale en el Dashboard → Claves y ajustes.
 const EJ_KEY = "3f9a1c2e-7b4d-4e8a-9c21-5d6e7f8a9b0c";
@@ -1046,7 +1047,8 @@ const DOCS = [
     desc: "Entra al <b>Dashboard</b>, crea tu cuenta y luego un proyecto (un proyecto = un juego). Cada proyecto trae dos claves: <b>Desarrollo</b> para probar en tu PC y <b>Publicado</b> para el juego que subes.",
     ideas: ["Haz un proyecto por juego. Si tienes 3 juegos, 3 proyectos: sus jugadores nunca se mezclan."] },
   { cat: "rapido", title: "2. Importa Órbita en tu juego",
-    desc: "Descarga el SDK. En GameMaker abre el proyecto Órbita → <b>Tools → Create Local Package</b> → marca la carpeta <b>Orbita</b> (scripts y objetos) y guárdalo. En tu juego: <b>Tools → Import Local Package</b>." },
+    desc: "Descarga el SDK. En GameMaker abre el proyecto Órbita → <b>Tools → Create Local Package</b> → marca la carpeta <b>Orbita</b> (scripts y objetos) y, si vas a usar rollback, también <b>Rebobina</b>, y guárdalo. En tu juego: <b>Tools → Import Local Package</b>. Paso a paso en «Tu propio juego y Render».",
+    ojo: ["Si no importas la carpeta Demo, cambia <code>ORB_PLAYER_OBJECT</code> en <code>orb_config</code> a <code>obj_orb_player</code> (o a tu propio objeto)."] },
   { cat: "rapido", title: "3. Pega tu clave en orb_config",
     desc: "Abre el script <code>orb_config</code>. La dirección ya apunta al servidor de Órbita; solo cambia la clave por la tuya (Dashboard → tu proyecto → <b>Claves y ajustes</b> → Copiar).",
     codeFn: configCode,
@@ -1608,6 +1610,298 @@ orb_on(ORB_EV_ERROR, function(_e, _from) {
   { cat: "proyectos", title: "¿Y si alguien saca la clave de mi juego?",
     desc: "Se puede: todo lo que va dentro de un ejecutable se puede extraer, y con ella alguien podría conectarse como tu juego. Por eso lo importante no depende de la clave:",
     ideas: ["Rankings, tiendas y configuración: en colecciones <code>ro_…</code> o <code>priv_…</code>.", "Dados, daño, puntos y recompensas: que los decida el servidor con <code>orb_request_server</code>.", "Si ves abuso: pausa o cambia la clave de <b>Publicado</b> y sube una actualización con la nueva."] },
+  // ===================== MODO ROLLBACK =====================
+  { cat: "rollback", title: "¿Qué es el modo rollback y cuándo usarlo?",
+    desc: "Órbita tiene dos formas de jugar en línea. En el <b>modo normal</b> cada jugador manda su posición y los demás la dibujan. En el <b>modo rollback</b> (el motor <b>Rebobina</b>, que ya viene dentro de Órbita) cada jugador manda <b>solo sus botones</b>, y todos simulan el mismo juego. Si llega un botón distinto al que se adivinó, el juego <b>rebobina</b> unos frames, corrige y sigue. Así funcionan los juegos de pelea online buenos.",
+    params: [["Modo normal", "Muchos jugadores por sala. Fácil: cualquier objeto se sincroniza. Ideal para casual, mundos, cartas o shooters tranquilos."], ["Modo rollback", "De <b>2 a 4 jugadores</b>. Cada frame importa: peleas, duelos de tanques, capturar la bandera 2 vs 2, todos contra todos y cooperativos tipo Contra."], ["Lo que pide el rollback", "Que tu juego sea <b>determinista</b>: con los mismos botones, siempre el mismo resultado en todas las PCs (ver «Las reglas de oro»)."]],
+    ideas: ["Puedes usar los dos en el mismo juego: el lobby, las cuentas y la base de datos con el modo normal, y la partida en sí con rollback.", "Para un juego de pelea 1 vs 1 es lo mejor que hay: casi no se siente el lag."],
+    ojo: ["Si alguien se sale a media partida, la partida termina para todos (seguir sin él en cooperativo todavía no está).", "Órbita lleva los paquetes por WebSocket: con buen internet no se nota, pero con Wi-Fi o datos malos puede dar más tirones que una conexión UDP directa.", "Los paquetes pasan por tu servidor: el ping es el de ida y vuelta al servidor (si está en Render, en Estados Unidos)."] },
+  { cat: "rollback", title: "Probar la demo (tecla K)",
+    desc: "Abre el proyecto Órbita en GameMaker, dale Run y presiona <b>K</b>. Entras al modo rollback con un juego de cuadrados que disparan:",
+    params: [["Crear sala", "Elige el modo (1 vs 1, 2 vs 2, todos contra todos o cooperativo) y crea la sala. Puedes ponerle contraseña."], ["Unirse con código", "Escribe el código de 6 letras que te pasaron."], ["Prueba local", "Tú contra bots en la misma ventana, con 50 ms de lag simulado. No necesita internet."], ["Synctest", "Rebobina 7 frames en cada frame. Si dice OK, el juego aguanta el rollback."], ["En partida", "<b>H</b> datos de la sesión · <b>F9</b> provoca un desync a propósito · <b>ENTER</b> revancha (host) · <b>ESC</b> salir."]],
+    ideas: ["Para probar en línea en tu PC: crea el ejecutable y ábrelo dos veces. En una creas la sala y en la otra te unes con el código.", "Abajo a la izquierda dice «Sync OK» mientras todo va bien."] },
+  { cat: "rollback", title: "Tu juego en 5 funciones (el contrato)",
+    desc: "Rebobina no sabe qué juego corre. Tu juego le entrega un struct con estas funciones y listo. Este es un juego completo y chiquito: cuadrados que se mueven.",
+    params: [["players", "Cuántos jugadores aguanta tu juego (2 a 4)."], ["create(semilla, jugadores)", "Devuelve el estado inicial (un struct). <code>jugadores</code> es cuántos juegan de verdad."], ["copy_into(destino, origen)", "Copia TODO el estado, campo por campo, dentro de <code>destino</code>. No crees structs nuevos aquí."], ["step(estado, inputs)", "Avanza 1 frame. <code>inputs[i]</code> es el byte de botones del jugador i."], ["checksum(estado)", "Un número que resume todo el estado (para detectar desyncs)."], ["describe(estado)", "Texto legible del estado (sale en los archivos de desync)."]],
+    code: `// Script: mi_sim
+function mi_state_new(_seed, _np = 4) {
+    var _s = { frame : 0, rng : (_seed mod 2147483646) + 1, np : _np, px : [], py : [] };
+    for (var i = 0; i < 4; i += 1) { _s.px[i] = 10000 + i * 20000; _s.py[i] = 30000; }
+    return _s;
+}
+function mi_copy_into(_d, _o) {
+    _d.frame = _o.frame; _d.rng = _o.rng; _d.np = _o.np;
+    for (var i = 0; i < 4; i += 1) { _d.px[i] = _o.px[i]; _d.py[i] = _o.py[i]; }
+}
+function mi_step(_s, _ins) {
+    _s.frame += 1;
+    for (var i = 0; i < _s.np; i += 1) {
+        if ((_ins[i] & 1) != 0) _s.px[i] -= 300;   // izquierda
+        if ((_ins[i] & 2) != 0) _s.px[i] += 300;   // derecha
+    }
+}
+function mi_checksum(_s) {
+    var _h = _s.frame;
+    for (var i = 0; i < 4; i += 1) _h = (_h * 31 + _s.px[i] * 7 + _s.py[i]) mod 1000000007;
+    if (_h < 0) _h += 1000000007;
+    return _h;
+}
+function mi_describe(_s) { return "frame=" + string(_s.frame) + " px=" + string(_s.px); }
+
+function mi_game() {
+    return { players : 4, create : mi_state_new, copy_into : mi_copy_into,
+             step : mi_step, checksum : mi_checksum, describe : mi_describe };
+}`,
+    ideas: ["La demo completa (con balas, vidas, enemigos y jefe) está en el script <code>dm_sim</code>. Cópialo con otro prefijo y cambia las reglas.", "Si tu juego tiene modos (como la demo), guarda el modo en el estado y pásalo al crear (mira <code>dm_game(modo)</code>)."],
+    ojo: ["Las posiciones van en <b>subpíxeles enteros</b> (10000 = 100 px). Nada de decimales.", "Campo nuevo = <b>4 lugares</b>: crearlo, copiarlo, meterlo al checksum y al texto. Si se te olvida copiarlo, el synctest te avisa al instante."] },
+  { cat: "rollback", title: "Las reglas de oro (si no, sale DESYNC)",
+    desc: "Todas las PCs simulan el mismo juego por su cuenta. Si una sola cosa sale distinta en una PC, se separan. Estas reglas lo evitan:",
+    params: [["1. Todo en un struct", "Todo lo que importa del juego vive en el estado. Nada en variables de instancias, alarmas ni objetos."], ["2. Solo enteros", "Posiciones, velocidades y vida: números enteros. Usa subpíxeles (x100) en vez de decimales."], ["3. Nada de afuera", "En <code>step</code> nada de <code>random()</code>, <code>current_time</code>, teclado, <code>place_meeting</code>, física ni <code>image_index</code>. El azar sale del estado (abajo)."], ["4. Copia todo", "<code>copy_into</code> copia cada campo. Lo que no copies, el rollback no lo puede rebobinar."], ["5. Efectos afuera", "Sonidos, partículas y vibración se lanzan desde el dibujo, mirando el estado (ver «Sonidos y efectos»)."]],
+    code: `// Azar que sí funciona con rollback: sale del estado y todos sacan el mismo número
+function mi_rand(_s, _n) {
+    _s.rng = (_s.rng * 48271) mod 2147483647;
+    return _s.rng mod _n;
+}
+// en step:
+if (mi_rand(_s, 100) < 5) { /* 5% de que salga un enemigo */ }
+
+// MAL (cada PC saca un número distinto):
+// if (irandom(99) < 5) ...`,
+    ojo: ["Fuera de <code>step</code> (en el dibujo, en los bots, en el menú) sí puedes usar random y lo que quieras: eso no se rebobina.", "Ojo con multiplicar números enormes: GameMaker usa números con decimales por dentro y pierde precisión pasando de 9 mil billones. Por eso el azar de arriba usa esos números exactos."] },
+  { cat: "rollback", title: "Botones: un byte por jugador",
+    desc: "Cada frame, cada jugador manda un número con sus botones. Cada botón es un bit (1, 2, 4, 8, 16, 32, 64, 128): caben hasta 8 botones.",
+    code: `#macro MI_IN_IZQ   1
+#macro MI_IN_DER   2
+#macro MI_IN_SALTO 4
+#macro MI_IN_GOLPE 8
+
+function mi_leer_input() {
+    var _i = 0;
+    if (keyboard_check(ord("A")) || gamepad_axis_value(0, gp_axislh) < -0.5) _i |= MI_IN_IZQ;
+    if (keyboard_check(ord("D")) || gamepad_axis_value(0, gp_axislh) > 0.5)  _i |= MI_IN_DER;
+    if (keyboard_check(ord("W")) || gamepad_button_check(0, gp_face1))      _i |= MI_IN_SALTO;
+    if (keyboard_check(ord("F")) || gamepad_button_check(0, gp_face3))      _i |= MI_IN_GOLPE;
+    return _i;
+}
+// en step: if ((_ins[i] & MI_IN_GOLPE) != 0) ...`,
+    ideas: ["Para «apretó ahora» (y no «lo tiene apretado») guarda el input del frame anterior en el estado (<code>prev_in</code>) y compáralo, como hace la demo con el salto.", "Los controles táctiles del teléfono se suman igual: <code>_i |= botones_tactiles;</code>"],
+    ojo: ["Lee el teclado <b>una vez por Step</b> y usa ese mismo valor en todos los ticks de ese Step (la demo lo hace así)."] },
+  { cat: "rollback", title: "new RbSessionMulti({...}) — crear la partida",
+    desc: "La sesión es la que hace el rollback. Se crea una por partida en cada PC, cuando ya todos están en la misma sala de Órbita.",
+    params: [["players", "Cuántos juegan (2 a 4). Igual en todas las PCs."], ["local_player", "Mi número de jugador (0 a 3). El 0 es el host: mide el ping con todos y dice cuándo empezar."], ["transport", "Por dónde viajan los paquetes: <code>new RbTransportOrbita(partida)</code> por internet, o <code>RbTransportHub</code> para probar en una ventana."], ["game", "Tu juego (el struct con las 5 funciones)."], ["input_delay", "Frames de retraso de los botones (2 es bueno). Menos rollback a cambio de un poquito de retraso."], ["start_delay_ms", "Cuánto espera el host antes de arrancar (600)."]],
+    code: `sesion = new RbSessionMulti({
+    players : 2,
+    local_player : yo,                          // 0 o 1
+    transport : new RbTransportOrbita(partida), // partida: número que eligió el host
+    game : mi_game(),
+    input_delay : global.rb_cfg.input_delay,
+    start_delay_ms : global.rb_cfg.start_delay_ms
+});
+clock = new RbClock();`,
+    ojo: ["Todos deben crear la sesión con el mismo <code>players</code>, el mismo juego y el mismo número de partida.", "Al terminar llama <code>sesion.destroy()</code>."] },
+  { cat: "rollback", title: "Cada frame: RbClock y sesion.update(input)",
+    desc: "La simulación corre siempre a 60 por segundo, aunque la PC dibuje a 30 o 45. <code>RbClock</code> dice cuántos ticks tocan en este Step (casi siempre 1).",
+    code: `// Step de tu objeto de partida
+var _in = mi_leer_input();          // una vez por Step
+repeat (clock.ticks()) {
+    sesion.update(_in);
+}`,
+    returns: "Nada. Después de <code>update</code>, el juego actual está en <code>sesion.state</code>.",
+    ojo: ["No pongas la lógica del juego en el Step de objetos: todo va en tu <code>step(estado, inputs)</code>.", "Si cambias la velocidad del room, no pasa nada: el reloj mide tiempo real."] },
+  { cat: "rollback", title: "Dibujar: sesion.state",
+    desc: "Dibuja <b>leyendo</b> <code>sesion.state</code>. Nunca lo cambies desde el dibujo. Antes de empezar, la sesión pasa por <code>\"conectando\"</code> y <code>\"cuenta\"</code>: ahí todavía no hay estado.",
+    code: `// Draw GUI
+if (sesion.estado != "jugando") {
+    draw_text(20, 20, "Conectando con los demás...");
+    exit;
+}
+var _s = sesion.state;
+for (var i = 0; i < _s.np; i += 1) {
+    draw_rectangle(_s.px[i] / 100 - 16, _s.py[i] / 100 - 32, _s.px[i] / 100 + 16, _s.py[i] / 100, false);
+}`,
+    params: [["sesion.estado", "<code>\"conectando\"</code> → <code>\"cuenta\"</code> → <code>\"jugando\"</code>, o <code>\"desconectado\"</code> (y el motivo en <code>sesion.msg</code>)."], ["sesion.local_player", "Mi número de jugador (para pintar \"TU\" encima del tuyo)."], ["sesion.frame", "Frame actual de la partida."]] },
+  { cat: "rollback", title: "Juntar a los jugadores con Órbita y empezar",
+    desc: "Se usan las salas normales de Órbita. Cuando el host le da a Empezar, le manda a todos (él incluido) la lista de jugadores en orden y un número de partida. Cada uno busca su lugar en la lista y crea su sesión.",
+    code: `// HOST: botón Empezar
+var _lista = [{ id : orb_my_id(), slot : orb_slot() }];
+var _otros = orb_players();
+for (var i = 0; i < array_length(_otros); i += 1) array_push(_lista, { id : _otros[i], slot : orb_player_slot(_otros[i]) });
+array_sort(_lista, function(_a, _b) { return _a.slot - _b.slot; });
+var _ids = [];
+for (var j = 0; j < array_length(_lista); j += 1) array_push(_ids, _lista[j].id);
+orb_lock_room(true);   // que no entre nadie más
+orb_send_all("rb_go", { ids : _ids, partida : irandom_range(1, 999999) });
+
+// TODOS (Create): recibir el "empezar"
+orb_on("rb_go", function(_d, _from) {
+    var _yo = -1;
+    for (var i = 0; i < array_length(_d.ids); i += 1) if (_d.ids[i] == orb_my_id()) _yo = i;
+    if (_yo < 0) return;
+    if (!is_undefined(sesion)) sesion.destroy();   // revancha
+    sesion = new RbSessionMulti({ players : array_length(_d.ids), local_player : _yo,
+        transport : new RbTransportOrbita(_d.partida), game : mi_game(),
+        input_delay : 2, start_delay_ms : 600 });
+});`,
+    ideas: ["Equipos: con el orden por puesto, el jugador i es del equipo <code>i mod 2</code>.", "Guarda el modo de juego en las props de la sala (<code>orb_set_room_props({ modo : 1 })</code>) para que todos lo vean en el lobby.", "La demo completa de sala y partida está en <code>obj_rb_arena</code>."],
+    ojo: ["En la sala donde juegas con rollback llama <code>orb_spawn_views(false)</code>: no quieres que Órbita cree los muñequitos del modo normal.", "El número de partida sirve para que, en una revancha, los paquetes viejos que todavía vienen viajando no se mezclen con los nuevos."] },
+  { cat: "rollback", title: "Avisos de conexión y ping",
+    desc: "La sesión te dice cómo va la conexión con cada jugador para que muestres avisos como los juegos grandes.",
+    params: [["sesion.silencio_ms", "Cuánto lleva sin mandar nada el jugador más callado."], ["sesion.quien_falta", "Ese jugador (0 a 3)."], ["sesion.ping_de(j)", "Ping con el jugador j (ms)."], ["sesion.rtt_ms", "El ping más alto con cualquiera (para el ícono de señal)."], ["sesion.calidad()", "0 buena, 1 regular, 2 mala."], ["RB_WARN_MS / RB_WARN2_MS / RB_TIMEOUT_MS", "1 s aviso pequeño, 4 s cartel, 15 s fin de la partida (en <code>rb_config</code>)."]],
+    code: `if (sesion.silencio_ms >= RB_WARN_MS && sesion.estado == "jugando") {
+    draw_text(560, 120, "Esperando a J" + string(sesion.quien_falta + 1) + "...");
+}
+for (var j = 0; j < sesion.num_players; j += 1) {
+    if (j != sesion.local_player) draw_text(20, 40 + j * 20, "J" + string(j + 1) + ": " + string(sesion.ping_de(j)) + " ms");
+}`,
+    ideas: ["Pinta el ping de verde (menos de 100), amarillo (menos de 160) o naranja, como en la demo (<code>dm_ping_col</code>)."] },
+  { cat: "rollback", title: "Si alguien se va: sesion.player_left(j)",
+    desc: "Si un jugador cierra el juego, la sesión lo nota a los 15 segundos. Con el evento de Órbita lo sabes al instante:",
+    code: `orb_on(ORB_EV_LEFT, function(_d, _from) {
+    if (is_undefined(sesion)) return;
+    for (var i = 0; i < array_length(ids); i += 1) {
+        if (ids[i] == _d.player) sesion.player_left(i);   // termina la partida con "J? se salió"
+    }
+});`,
+    ojo: ["Para salir tú, llama <code>orb_leave_room()</code>: así a los demás les llega <code>ORB_EV_LEFT</code> enseguida."] },
+  { cat: "rollback", title: "Synctest: probar sin red y sin nadie",
+    desc: "Antes de probar en línea, corre el synctest. En cada frame rebobina 7 frames, vuelve a simular y compara. Si algo de tu juego no aguanta el rollback, falla en ese mismo frame y te dice qué fue.",
+    code: `// Create
+synctest = new RbSyncTest(mi_game(), 7);
+clock = new RbClock();
+
+// Step: tú con el teclado y los demás con 0 (o con bots)
+var _in = mi_leer_input();
+repeat (clock.ticks()) synctest.update([_in, 0, 0, 0]);
+
+// Draw GUI
+rb_synctest_hud(synctest, 20, 20);   // "OK" en verde, o el frame donde falló`,
+    params: [["synctest.fail_frame", "-1 si todo va bien; si no, el frame donde falló."], ["synctest.fail_file", "Archivo con los dos estados (normal y rebobinado). El campo distinto es el culpable."], ["synctest.restart()", "Empezar de nuevo."]],
+    ideas: ["Córrelo 1 minuto cada vez que cambies las reglas del juego. Si dice OK, el rollback en línea va a funcionar.", "Juega de verdad mientras corre (golpea, muere, reaparece): los errores salen cuando pasan cosas."] },
+  { cat: "rollback", title: "DESYNC: cómo encontrar el error",
+    desc: "En línea, cada PC compara la huella (checksum) de cada frame con la de los demás. Si no coinciden, sale <b>DESYNC</b> y se guarda un archivo con tu estado en ese frame.",
+    params: [["sesion.desync_frame", "-1 si todo va bien; si no, el primer frame distinto."], ["sesion.desync_player", "Con qué jugador no coincidiste."], ["sesion.desync_file", "Archivo <code>desync_fN_jM.txt</code> (en la carpeta de guardado del juego)."], ["sesion.inject_bug()", "Provoca un desync a propósito en tu PC (la demo lo hace con F9), para ver que el detector funciona."]],
+    ideas: ["Compara el archivo de las dos PCs: el campo distinto es la pista.", "Las causas más comunes: un campo que no copias, <code>random()</code> en el step, usar <code>image_index</code>, o un decimal que sale distinto."] },
+  { cat: "rollback", title: "Prueba local con bots (RbHub)",
+    desc: "Varias sesiones en la misma ventana, conectadas por una red simulada. Sirve para probar 4 jugadores sin internet y sin nadie más.",
+    code: `var _hub = new RbHub();
+sesiones = [];
+for (var i = 0; i < 4; i += 1) {
+    var _t = new RbTransportHub(_hub);
+    _t.link.lag_ms = 50;      // lag simulado
+    _t.link.jitter_ms = 10;
+    _t.link.loss_pct = 5;     // 5% de paquetes perdidos
+    array_push(sesiones, new RbSessionMulti({ players : 4, local_player : i, transport : _t,
+        game : mi_game(), input_delay : 2, start_delay_ms : 600 }));
+}
+// Step: sesiones[0] con el teclado, las demás con bots
+repeat (clock.ticks()) {
+    sesiones[0].update(mi_leer_input());
+    for (var j = 1; j < 4; j += 1) sesiones[j].update(irandom(15));
+}`,
+    ideas: ["Dibuja <code>sesiones[0].state</code>: es lo que ve el jugador 1.", "Sube el lag a 150 para ver cómo se siente con mal internet."] },
+  { cat: "rollback", title: "Ajustes: rb_config",
+    desc: "El script <code>rb_config</code> tiene los números del motor.",
+    params: [["input_delay (2)", "Retraso de los botones en frames. 1 = más rápido pero más rollback; 3 = más suave con mal internet."], ["RB_MAX_PRED (8)", "Máximo de frames que se adivinan. Si hay que adivinar más, el juego espera."], ["RB_WARN_MS, RB_WARN2_MS, RB_TIMEOUT_MS", "Cuándo avisar y cuándo terminar la partida si alguien no responde."], ["local_lag_ms / local_jitter_ms / local_loss_pct", "La red simulada de la prueba local."]],
+    ojo: ["Todos los jugadores usan el <code>input_delay</code> del host (se lo manda al empezar)."] },
+
+  // ===================== SPRITES Y ANIMACIÓN =====================
+  { cat: "sprites", title: "Modo normal: tus sprites se ven solos",
+    desc: "En el modo normal, <code>orb_state_from(id)</code> manda tu <code>sprite_index</code>, <code>image_index</code>, escala, ángulo, color y alpha. El objeto de los otros jugadores (<code>ORB_PLAYER_OBJECT</code>) los recibe y se dibuja con <code>draw_self()</code>. O sea: animas a tu jugador como siempre y los demás lo ven igual.",
+    code: `// Step de tu jugador (modo normal)
+if (hspeed != 0) { sprite_index = spr_correr; image_xscale = sign(hspeed); }
+else sprite_index = spr_quieto;
+if (!place_meeting(x, y + 1, obj_suelo)) sprite_index = spr_saltar;
+
+global.orb_state = orb_state_from(id);   // manda sprite, frame, escala... (solo si cambió)
+global.orb_state.nombre = mi_nombre;`,
+    ideas: ["Arma, gorra o skin: mándalo como un dato más (<code>global.orb_state.skin = 2</code>) y en el objeto de los demás dibuja la capa extra según <code>orb_state.skin</code>."],
+    ojo: ["El número de cada sprite depende del proyecto: todos tienen que jugar <b>la misma versión</b> del juego (para eso está <code>ORB_GAME_ID</code>).", "Para dibujar distinto a los demás, crea un hijo de <code>obj_orb_player</code>, ponlo en <code>ORB_PLAYER_OBJECT</code> y llama <code>event_inherited()</code> al principio de sus eventos."] },
+  { cat: "sprites", title: "Modo normal: el objeto de los otros jugadores",
+    desc: "Los otros jugadores aparecen como instancias de <code>ORB_PLAYER_OBJECT</code>. Ahí tienes su estado en <code>orb_state</code>.",
+    code: `// obj_mi_otro_jugador (padre: obj_orb_player) — Draw
+event_inherited();                 // se dibuja con su sprite y su nombre
+var _vida = orb_state[$ "vida"];
+if (is_numeric(_vida)) draw_healthbar(x - 20, y + 22, x + 20, y + 26, _vida, c_black, c_red, c_lime, 0, true, true);`,
+    ojo: ["En <code>orb_config</code>: <code>#macro ORB_PLAYER_OBJECT obj_mi_otro_jugador</code>."] },
+  { cat: "sprites", title: "Rollback: la animación vive en el estado",
+    desc: "Con rollback, <b>nada de <code>image_index</code> ni <code>image_speed</code></b>: avanzan solos y el rollback no los puede rebobinar. La animación es un número más del estado: cuál animación (<code>anim</code>) y cuántos frames lleva (<code>anim_t</code>). La simulación decide la animación; el dibujo solo la muestra.",
+    code: `#macro MI_ANIM_QUIETO 0
+#macro MI_ANIM_CORRER 1
+#macro MI_ANIM_SALTO  2
+#macro MI_ANIM_GOLPE  3
+
+// dentro de tu step, al final de mover al jugador _p:
+var _nueva = MI_ANIM_QUIETO;
+if (_p.vx != 0) _nueva = MI_ANIM_CORRER;
+if (_p.ground == 0) _nueva = MI_ANIM_SALTO;
+if (_p.atk_t > 0) _nueva = MI_ANIM_GOLPE;
+if (_nueva != _p.anim) { _p.anim = _nueva; _p.anim_t = 0; }
+else _p.anim_t += 1;
+
+// y no se te olvide: anim y anim_t en crear, copy_into, checksum y describe`,
+    ideas: ["El golpe que pega en ciertos frames va atado al tiempo del ataque (<code>atk_t</code>), no al reloj de la animación. Así lo que ves coincide con cuando pega."] },
+  { cat: "sprites", title: "Rollback: dibujar con tus sprites",
+    desc: "En el dibujo eliges el sprite según <code>anim</code> y el frame según <code>anim_t</code>. Para cambiar los cuadrados de la demo por tus personajes, cambia el dibujo de jugadores en <code>dm_draw_world</code> por algo así:",
+    code: `function mi_sprite_de(_anim) {
+    switch (_anim) {
+        case MI_ANIM_CORRER: return spr_correr;
+        case MI_ANIM_SALTO:  return spr_saltar;
+        case MI_ANIM_GOLPE:  return spr_golpe;
+        default:             return spr_quieto;
+    }
+}
+
+// Draw GUI: un jugador _p del estado
+var _spr = mi_sprite_de(_p.anim);
+var _frame = (_p.anim_t div 6) mod sprite_get_number(_spr);   // 6 = un cuadro cada 6 frames (10 por segundo)
+draw_sprite_ext(_spr, _frame, _p.x / 100, _p.y / 100, _p.face * 2, 2, 0, c_white, 1);`,
+    ideas: ["Pon el origen del sprite abajo al centro (los pies): así <code>x, y</code> del estado son los pies del personaje.", "La escala <code>_p.face * 2</code> voltea el sprite según hacia dónde mira y lo dibuja al doble.", "Para el golpe, que el último cuadro se quede: <code>min(_p.anim_t div 4, sprite_get_number(_spr) - 1)</code>."],
+    ojo: ["Las cajas para pegar no salen del sprite: son rectángulos en números enteros dentro de tu step (abajo). Así son iguales en todas las PCs."] },
+  { cat: "sprites", title: "Rollback: cajas de golpe (sin place_meeting)",
+    desc: "Las colisiones de GameMaker usan instancias y máscaras: no se pueden rebobinar. En rollback se hacen con rectángulos de números enteros dentro de tu step.",
+    code: `// ¿El puño de _a toca el cuerpo de _b? (todo en subpíxeles)
+function mi_golpea(_a, _b) {
+    var _px1 = _a.x + _a.face * 1400, _px2 = _a.x + _a.face * 3800;   // el puño, delante
+    var _x1 = min(_px1, _px2), _x2 = max(_px1, _px2);
+    var _y1 = _a.y - 4000, _y2 = _a.y - 3000;                         // a la altura del pecho
+    // cuerpo de _b: 28 px de ancho, 72 de alto
+    return (_x2 >= _b.x - 1400 && _x1 <= _b.x + 1400 && _y2 >= _b.y - 7200 && _y1 <= _b.y);
+}`,
+    ideas: ["Con la tecla H de Rebobina puedes dibujar las cajas para ver si cuadran con tus sprites (míralo en el proyecto Rebobina, <code>cq_draw</code>)."] },
+  { cat: "sprites", title: "Sonidos y efectos sin que se repitan",
+    desc: "Si pones un sonido dentro del step, con cada rollback sonaría 2, 3 o 5 veces. La simulación solo <b>anota</b> el frame del golpe (<code>last_hit</code>), y afuera lanzas el efecto una sola vez:",
+    code: `// En tu step, al pegar:
+_s.last_hit = _s.frame;
+
+// En el Step o Draw del objeto de partida (afuera de la simulación):
+var _s = sesion.state;
+if (_s.last_hit > ultimo_golpe_visto && _s.last_hit <= _s.frame) {
+    ultimo_golpe_visto = _s.last_hit;
+    audio_play_sound(snd_golpe, 1, false);
+    temblor = 8;   // sacudir la pantalla unos frames
+}`,
+    ojo: ["Un rollback puede «des-hacer» un golpe que adivinó mal. Con esta forma, en el peor caso suena un golpe que al final no pasó; nunca suena dos veces."] },
+
+  // ===================== TU PROPIO JUEGO =====================
+  { cat: "tujuego", title: "Separar tu juego del motor (paquete local)",
+    desc: "No hagas tu juego dentro del proyecto Órbita. Saca el motor como un <b>paquete local</b> (<code>.yymps</code>) y lo importas en un proyecto nuevo. Así el proyecto Órbita queda limpio para seguir mejorándolo.",
+    params: [["1. Crear el paquete", "Abre el proyecto <b>Órbita</b> → <b>Tools → Create Local Package</b>. Marca las carpetas <b>Orbita</b> (scripts y objetos <code>obj_orb…</code>) y <b>Rebobina</b>. Ponle nombre (por ejemplo <code>Orbita_Motor</code>) y guárdalo."], ["2. Proyecto nuevo", "Crea tu juego en GameMaker como siempre (File → New)."], ["3. Importarlo", "En tu juego: <b>Tools → Import Local Package</b> (o arrastra el <code>.yymps</code> encima de GameMaker) → <b>Add All</b> → Import."], ["4. Configurar", "En <code>orb_config</code> pon tu servidor y tu clave, y cambia <code>ORB_PLAYER_OBJECT</code> (abajo)."]],
+    codeFn: () => configCode().replace("// versión o modo de tu juego", "// versión o modo de tu juego") + `
+#macro ORB_PLAYER_OBJECT obj_orb_player   // o un hijo tuyo (obj_mi_otro_jugador)`,
+    ideas: ["Si quieres la demo de rollback como ejemplo, marca también <code>dm_sim</code>, <code>dm_input</code>, <code>dm_draw</code>, <code>obj_rb_arena</code> y <code>rm_rollback</code>.", "Guarda el <code>.yymps</code> en una carpeta tipo <code>Orbita/paquetes/</code> con la fecha en el nombre."],
+    ojo: ["En el proyecto Órbita, <code>ORB_PLAYER_OBJECT</code> apunta a <code>obj_otro_jugador</code>, que está en la carpeta Demo. Si no importas la Demo, <b>cámbialo</b> a <code>obj_orb_player</code> o a tu propio objeto, o no va a compilar.", "<code>obj_orb</code> trae un ejemplo en su Create (<code>orb_login_guest</code> y cargar <code>mi_perfil</code>). Revísalo y déjalo como lo quieras en tu juego."] },
+  { cat: "tujuego", title: "Actualizar el motor en tu juego",
+    desc: "Cuando mejoremos Órbita o Rebobina: vuelve a crear el paquete en el proyecto Órbita e impórtalo otra vez en tu juego. GameMaker te pregunta qué reemplazar.",
+    ideas: ["Al importar, <b>desmarca</b> <code>orb_config</code> y <code>rb_config</code>: así no pierdes tu servidor, tu clave y tus ajustes."],
+    ojo: ["No cambies los scripts del motor dentro de tu juego: al actualizar se borrarían tus cambios. Pon tus cosas en tus propios scripts (por ejemplo <code>mi_sim</code>, <code>mi_red</code>).", "Antes de importar una versión nueva, haz una copia de tu proyecto (o un commit en Git)."] },
+  { cat: "tujuego", title: "¿Y exportar el .yyp?",
+    desc: "El <code>.yyp</code> es el archivo del proyecto completo, no se importa en otro proyecto. Si copias el proyecto Órbita entero (o haces «Guardar como»), te llevas también la demo, y luego es difícil actualizar el motor. Por eso es mejor el paquete local de arriba.",
+    params: [["Paquete local (.yymps)", "Para llevar el motor a tus juegos. Lo recomendado."], ["Copiar el proyecto entero", "Solo si quieres empezar desde la demo y modificarla. Bien para experimentar."], ["Exportar el proyecto (.yyz)", "Un solo archivo con todo el proyecto, para respaldo o para pasárselo a alguien."]] },
+  { cat: "tujuego", title: "Probar de verdad en Render",
+    desc: "Para jugar con alguien desde otra casa, el servidor tiene que estar en internet. En tu misma cuenta de Render puedes tener un servicio de pruebas aparte del principal.",
+    params: [["1. Subir el servidor", "La carpeta <code>servidor/</code> en tu repo de GitHub (sin <code>node_modules</code> ni <code>data</code>)."], ["2. Nuevo servicio", "Render → <b>New → Web Service</b> → tu repo. Build <code>npm install</code>, Start <code>npm start</code>. Si el repo tiene más cosas, pon <code>servidor</code> como Root Directory."], ["3. Variables", "Como mínimo <code>ADMIN_TOKEN</code> (algo largo y secreto) y <code>GAME_KEY</code> si usas la clave maestra."], ["4. En el juego", "<code>ORB_HOST</code> = la dirección que te da Render (termina en <code>.onrender.com</code>), <code>ORB_PORT 443</code>, <code>ORB_SECURE true</code>."]],
+    ideas: ["Prueba el modo rollback: tú creas la sala y tu amigo se une con el código. Fíjate en el ping de cada uno y si sale «Sync OK».", "Con <code>node test/carga.js --url wss://TU-SERVICIO.onrender.com --key TU_CLAVE --pasos 20,40</code> mides cuánto aguanta."],
+    ojo: ["El plan gratis se duerme si nadie lo usa un rato y tarda en despertar (Órbita reintenta sola). También borra el disco al reiniciar: cuentas y base de datos se pierden.", "El plan gratis tiene poca CPU: para probar con unos pocos amigos sobra, pero no para mucha gente."] },
 ];
 
 function docBlock(d) {
