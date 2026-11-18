@@ -1022,7 +1022,7 @@ const DOC_CATS = [
   ["rapido", "Primer juego (5 min)"], ["conexion", "Conexión y red"], ["salas", "Salas y partida rápida"],
   ["jugadores", "Jugadores, entidades y eventos"], ["datos", "Base de datos y mundo"], ["servidor", "Servidor, IA y Discord"],
   ["cuentas", "Cuentas de jugador"], ["proyectos", "Proyectos, claves y versiones"],
-  ["rollback", "Modo rollback (2 a 4)"], ["sprites", "Sprites y animación"], ["tujuego", "Tu propio juego y Render"], ["todo", "Ver todo"],
+  ["rollback", "Modo rollback (2 a 4)"], ["sprites", "Sprites y animación"], ["sonidos", "Sonidos con rollback"], ["tujuego", "Tu propio juego y Render"], ["todo", "Ver todo"],
 ];
 // Clave de ejemplo (ficticia). La real sale en el Dashboard → Claves y ajustes.
 const EJ_KEY = "3f9a1c2e-7b4d-4e8a-9c21-5d6e7f8a9b0c";
@@ -1805,6 +1805,21 @@ repeat (clock.ticks()) {
     ojo: ["Todos los jugadores usan el <code>input_delay</code> del host (se lo manda al empezar)."] },
 
   // ===================== SPRITES Y ANIMACIÓN =====================
+  { cat: "rollback", title: "Retraso automático según el ping",
+    desc: "El retraso de input (<code>input_delay</code>) es cuántos cuadros espera el juego antes de usar tus botones. Más retraso = saltos más chiquitos pero el control responde un poquito más tarde. Con <code>input_delay_max</code>, el <b>host mide el ping</b> al empezar y elige solo, como hacen los juegos de pelea con rollback:",
+    code: `// rb_config
+input_delay     : 2,    // el mínimo (con ping bajo se queda en 2 = 33 ms)
+input_delay_max : 6,    // con ping alto sube hasta aquí (6 = 100 ms)
+
+// al crear la sesión
+sesion = new RbSessionMulti({
+    ...,
+    input_delay : cfg.input_delay,
+    input_delay_max : cfg.input_delay_max,
+});`,
+    params: [["Ping hasta ~200 ms", "2 cuadros"], ["Ping ~250–300 ms", "4 cuadros"], ["Ping 400 ms o más", "6 cuadros (el máximo)"]],
+    ideas: ["La cuenta: el retraso tapa más o menos la mitad del viaje de ida y el rollback corrige el resto.", "Si sientes el control lento, baja <code>input_delay_max</code> a 4. Si ves muchos saltos, súbelo a 8."],
+    ojo: ["Lo decide el host al empezar y se lo manda a todos: no cambia a media partida."] },
   { cat: "sprites", title: "Modo normal: tus sprites se ven solos",
     desc: "En el modo normal, <code>orb_state_from(id)</code> manda tu <code>sprite_index</code>, <code>image_index</code>, escala, ángulo, color y alpha. El objeto de los otros jugadores (<code>ORB_PLAYER_OBJECT</code>) los recibe y se dibuja con <code>draw_self()</code>. O sea: animas a tu jugador como siempre y los demás lo ven igual.",
     code: `// Step de tu jugador (modo normal)
@@ -1881,6 +1896,74 @@ if (_s.last_hit > ultimo_golpe_visto && _s.last_hit <= _s.frame) {
     temblor = 8;   // sacudir la pantalla unos frames
 }`,
     ojo: ["Un rollback puede «des-hacer» un golpe que adivinó mal. Con esta forma, en el peor caso suena un golpe que al final no pasó; nunca suena dos veces."] },
+
+  // ===================== SONIDOS =====================
+  { cat: "sonidos", title: "Meter sonidos a tu juego",
+    desc: "Los sonidos son recursos normales de GameMaker. La forma más segura de crearlos es que GameMaker los cree por ti: <b>arrastra los archivos <code>.wav</code> o <code>.ogg</code> al Asset Browser</b>. Cada archivo se vuelve un sonido con el mismo nombre.",
+    params: [["1. Arrastrar", "Selecciona tus <code>.wav</code> y arrástralos encima de una carpeta del Asset Browser (por ejemplo «Sonidos»)."], ["2. Nombres", "Ponles nombres claros: <code>snd_disparo</code>, <code>snd_golpe</code>, <code>snd_explosion</code>… El código los usa por ese nombre."], ["3. Efectos cortos", "Disparos y golpes: <code>.wav</code> cortos. Música larga: <code>.ogg</code> (pesa menos)."]],
+    code: `// Buscar un sonido por nombre sin que truene si todavía no existe
+function snd_buscar(_nombre) {
+    var _i = asset_get_index(_nombre);
+    if (_i < 0 || asset_get_type(_nombre) != asset_sound) return -1;
+    return _i;
+}
+global.snd_disparo = snd_buscar("snd_disparo");   // -1 = no está (no suena, no da error)`,
+    ideas: ["Así puedes programar los sonidos antes de tenerlos: cuando los arrastres, empiezan a sonar solos.", "Si los creas a mano en el editor de sonido de GameMaker, igual sirve: lo importante es el nombre."] },
+  { cat: "sonidos", title: "La regla de oro: los sonidos van AFUERA de la simulación",
+    desc: "Con rollback, el juego a veces <b>vuelve a simular</b> cuadros que ya pasaron (2, 3 o 5 veces en un instante). Si el sonido está dentro de tu <code>step</code> de la simulación, ese disparo sonaría 5 veces. Por eso la simulación <b>no toca audio</b>: solo cambia números, y afuera (en el Step del objeto de partida) miras qué cambió y ahí suena.",
+    params: [["Dentro de la simulación", "Crear la bala, bajar la vida, quitar al tanque. Nada de <code>audio_play_sound</code>, partículas ni vibración."], ["Afuera (Step del objeto)", "Comparas el estado de ahora con el del Step anterior y tocas los sonidos de lo que cambió."], ["Por qué funciona", "El Step del objeto corre una sola vez por cuadro de pantalla, aunque la simulación haya rebobinado. Cada cosa suena una vez."]],
+    ojo: ["Si el rollback corrige algo que adivinó mal, puede sonar un golpe que al final no pasó. Es normal (pasa igual en Street Fighter o Tekken) y casi no se nota. Lo que nunca pasa con este método es que suene doble."] },
+  { cat: "sonidos", title: "Detectar qué pasó: disparo, golpe y explosión",
+    desc: "Guarda una «foto» chiquita del estado anterior (vida, si está vivo, balas) y compárala con el estado nuevo. Es lo mismo que usa TANKS WAR en <code>tk_fx_step</code>:",
+    code: `// En el Step del objeto de partida, después de avanzar la simulación
+var _s = sesion.state;
+if (_s.frame > visto_frame) {
+    for (var i = 0; i < _s.np; i += 1) {
+        var _p = _s.pl[i];
+        // le bajó la vida pero sigue vivo -> golpe
+        if (_p.alive == 1 && vida_antes[i] > _p.hp) sonar(global.snd_golpe, _p.x, _p.y, 1);
+        // estaba vivo y ya no -> explosión
+        if (vivo_antes[i] == 1 && _p.alive == 0) sonar(global.snd_explosion, _p.x, _p.y, 1);
+    }
+    for (var b = 0; b < array_length(_s.bul); b += 1) {
+        // un espacio de bala que antes estaba vacío y ahora no -> alguien disparó
+        if (bala_antes[b] == 0 && _s.bul[b].on == 1) sonar(global.snd_disparo, _s.bul[b].x, _s.bul[b].y, 0.9);
+    }
+}
+// guardar la foto para el próximo Step
+for (var i2 = 0; i2 < _s.np; i2 += 1) { vida_antes[i2] = _s.pl[i2].hp; vivo_antes[i2] = _s.pl[i2].alive; }
+for (var b2 = 0; b2 < array_length(_s.bul); b2 += 1) bala_antes[b2] = _s.bul[b2].on;
+visto_frame = _s.frame;`,
+    ideas: ["Con la misma foto sacas las chispas, el destello blanco y la explosión: todo lo visual y lo de sonido sale de ahí.", "Para un juego de pelea: si <code>last_hit</code> cambió, suena el golpe; si cambió el estado del personaje a «bloqueando», suena el bloqueo."] },
+  { cat: "sonidos", title: "Volumen según la distancia",
+    desc: "Para que no sea un ruidero con 4 jugadores: lo que pasa cerca de tu personaje suena fuerte y lo lejano más bajito. Usa la posición de <b>tu</b> jugador (<code>sesion.local_player</code>).",
+    code: `function sonar(_snd, _x, _y, _vol) {
+    if (_snd < 0) return;
+    var _yo = sesion.state.pl[sesion.local_player];
+    var _d = point_distance(_x, _y, _yo.x, _yo.y) / 100;           // subpíxeles -> píxeles
+    var _g = _vol * clamp(1 - _d / 1000, 0.3, 1);                 // nunca menos de 30%
+    var _h = audio_play_sound(_snd, 5, false);
+    audio_sound_gain(_h, _g, 0);
+}`,
+    ideas: ["Los disparos de los enemigos (IA) pueden ir con <code>_vol</code> más bajo que los de los jugadores."] },
+  { cat: "sonidos", title: "Sonidos en bucle (motor, pasos)",
+    desc: "Un sonido que se repite mientras pasa algo (el motor del tanque, pasos al caminar) no se toca cada cuadro: se prende <b>una vez</b> en bucle y solo se le sube o baja el volumen.",
+    code: `// Create:  motor = -1;
+// Step (después de la simulación):
+var _yo = sesion.state.pl[sesion.local_player];
+var _moviendo = (_yo.x != yo_x_antes || _yo.y != yo_y_antes);
+yo_x_antes = _yo.x; yo_y_antes = _yo.y;
+if (motor < 0 || !audio_is_playing(motor)) {
+    motor = audio_play_sound(snd_motor, 1, true);   // true = en bucle
+    audio_sound_gain(motor, 0, 0);
+}
+audio_sound_gain(motor, _moviendo ? 0.35 : 0, _moviendo ? 80 : 250);   // sube rápido, baja suave
+
+// Al salir de la partida (y en CleanUp):
+if (motor >= 0) audio_stop_sound(motor);`,
+    ojo: ["Solo el motor de <b>tu</b> personaje. Si suenan los motores de los 4, no se entiende nada.", "Para que el bucle no haga «clic» al repetirse, el final del archivo tiene que empatar con el inicio."] },
+  { cat: "sonidos", title: "Cosas a revisar",
+    params: [["HTML5", "Los navegadores no dejan sonar nada hasta que el jugador toque o haga clic una vez. Como el menú ya pide un clic, normalmente no pasa nada."], ["Android", "Funciona igual. Si suena con retraso, usa <code>.wav</code> cortos para los efectos."], ["Volumen general", "Multiplica todo por una variable (<code>global.volumen</code>) y ponla en Ajustes."], ["Pausa", "Si el juego está en pausa, el motor se apaga solo porque el tanque no se mueve."]] },
 
   // ===================== TU PROPIO JUEGO =====================
   { cat: "tujuego", title: "Separar tu juego del motor (paquete local)",
